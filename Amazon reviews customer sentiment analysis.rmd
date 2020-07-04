@@ -1,0 +1,3505 @@
+
+Jan Roller, Student-ID: 21820925
+Master Thesis at Zhejiang University, School of Management
+"HOW GLOBAL SHOPPING EVENTS INFLUENCE CUSTOMERS’ EMOTIONS"
+01.July.2019
+
+
+
+*Loading libraries and dependancies*
+  
+```{r message=FALSE, warning=FALSE}
+library(Hmisc)
+library(gridExtra)
+library(gofastr)
+library(ggplot2)
+library(plotly)
+library(data.table)
+library(tidyverse)
+library(scales)
+library(corrplot)
+library(rgdal)
+library(caret)
+library(psych)
+library(nortest)
+library(reshape2)
+library(lubridate)
+library(ggmap)
+library(ggpubr)
+library(stringi)
+library(SentimentAnalysis)
+library(tm)
+library(car)
+library(wordcloud)
+library(RColorBrewer)
+```
+
+
+*4.2	Data understanding* 
+
+Loading data set
+```{r}
+rm(list=ls())
+dataset <-read.csv("C:/Users/Jan/Desktop/Master Thesis/Data Set.csv", stringsAsFactors = FALSE)
+```
+
+
+
+Initial data cleaning for first exploration
+
+Receiving number of rows (observations) and columns (variables) and general statistics
+```{r}
+dim(dataset)
+summary(dataset)
+```
+
+Remove irrelevant variables
+Create new data set only containing the relevant three variables asins, reviews.date and reviews.text.
+
+```{r}
+data1 <-  dataset %>% select(asins, reviews.date, reviews.rating, reviews.text)  
+newvector <- (1:42)
+data1 %>% glimpse()
+```
+
+
+*Exploration of variable 'asins'  / 'Products'*
+
+Explore Data by frequency of each product ID's (asins) occurence
+
+```{r}
+sort(table(data1$asins))
+```
+
+For better handling, the variable Product will be created in which product names will be assigned to the respective asins (Product ID's)
+```{r}
+data1$Product[data1$asins == 'B018Y229OU' | data1$asins == 'B002Y27P3M' | data1$asins =='B00TSUGXKE' | data1$asins == 'B0083Q04TA' | data1$asins == 'B018Y23P7K'] <- 'Fire 7 8GB'
+data1$Product[data1$asins == 'B018Y225IA' | data1$asins == 'B018Y22BI4'] <- 'Fire 7 16GB'
+data1$Product[data1$asins == 'B01AHB9CN2' | data1$asins == 'B018SZT3BK' | data1$asins == 'B018T075DC'] <- 'Fire HD 8 16GB'
+data1$Product[data1$asins == 'B01AHB9CYG'] <- 'Fire HD 8 32GB'
+data1$Product[data1$asins == 'B0189XYY0Q'] <- 'Fire HD 10'
+data1$Product[data1$asins == 'B018Y23MNM'| data1$asins == 'B018Y22C2Y'] <- 'Fire Kids Edition'
+data1$Product[data1$asins == 'B01E6AO69U, B00L9EPT8O' | data1$asins == 'B00L9EPT8O,B01E6AO69U'| data1$asins == 'B00X4WHP5E'] <- 'Echo'
+data1$Product[data1$asins == 'B00U3FPN4U'] <- 'Fire TV'
+data1$Product[data1$asins == 'B00OQVZDJM' | data1$asins == 'B00QJDU3KY' | data1$asins == 'B01BFIBRIE'|data1$asins == 'B00ZV9PXP2'] <- 'Kindle Paperwhite'
+data1$Product[data1$asins == 'B00IOY8XWQ'| data1$asins == 'B00IOYAM4I'] <- 'Kindle Voyage'
+data1$Product[data1$asins == 'B00REQKWGA' | data1$asins == 'B00VINDBJK'] <- 'Kindle Oasis'
+data1$Product[data1$asins == 'B01BH83OOM'] <- 'Tap'
+```
+
+Remove variable asins (1st column of data frame), which was replaced by Products
+```{r}
+data2 <- data1[-1] 
+```
+
+Check for NA's 
+```{r}
+sum(is.na(data2$Product))
+```
+
+Checking for missing values among four relevant variables
+```{r}
+miss_pct1 <- map_dbl(data2, function(x) { round((sum(is.na(x)) / length(x)) * 100, 1) })
+
+miss_pct1 <- miss_pct1[miss_pct1 > 0]
+data.frame(miss=miss_pct1, var=names(miss_pct1), row.names=NULL) %>% ggplot(aes(x=reorder(var, -miss), y=miss)) + geom_bar(stat="identity", fill="blue") +   labs(x='', y="% Missing", title="Missing data by feature (%)") +
+theme(axis.text.x=element_text(angle=90, hjust=1))+
+  coord_flip()
+```
+
+
+Create new data frame for relevant products only and confirm that there is not a single missing value
+```{r}
+data3 = data2[complete.cases(data2$Product),]
+sum(is.na(data3$Product))
+```
+
+
+Histogram representing count of each product in the new data frame   
+```{r}
+ggplot(data3, aes(reorder(data3$Product,data3$Product,length), fill=data3$Product))+
+geom_bar(width=1, colour="gray")+ geom_text(aes(y=..count.., label=..count..),
+                   stat="count", color="black", 
+                   hjust=0.5, size=3)+ labs(title="Reviews per product", y="# Reviews", x = "Products")+  
+                   theme(legend.position="none") + coord_flip()
+```
+    
+
+*Exploration of variable 'reviews.date'*
+
+Since this variable originally is in the character format, it first needs to be converted to date format year-month-date.
+```{r}
+data3$reviews.date <- ymd_hms(data3$reviews.date)
+str(data3$reviews.date)
+```
+
+
+Check for NA's 
+```{r}
+sum(is.na(data3$reviews.date))
+which(is.na(data3$reviews.date))
+```
+
+
+Remove missing values (NA's) and confirm that there is not a single missing value afterwards
+```{r}
+data4 = data3[complete.cases(data3$reviews.date),]
+sum(is.na(data4$reviews.date))
+```
+
+
+Categorize reviews by month and day of publishing 
+```{r}
+data4$month <- floor_date(data4$reviews.date, unit = "month")
+data4$day <- floor_date(data4$reviews.date, unit = "day")
+```
+
+Time span of reviews
+```{r}
+min(data4$month)
+max(data4$month)
+```
+
+Histogram for review date distribution per month  
+```{r}
+ggplot(data4, aes(x=data4$month, stat(count))) + 
+ geom_histogram(bins=30, colour="black", fill="lightblue")+
+  geom_vline(aes(xintercept=mean(data4$day)),
+            color="black", linetype="dashed", size=1)+
+  labs(title="Reviews per month", y="# Reviews", x = "Time")+
+  theme_update(plot.title = element_text(hjust = 0.5))
+```
+
+
+*Products vs reviews.date*
+Line chart to plot Products over reviews.date to see which products were reviewed in which time span
+```{r}
+ggplot(data4, aes(x = data4$day, y = data4$Product)) + geom_point(colour="blue") + geom_smooth(method='lm', formula=y~x, colour="lightblue") + labs(title="Reviews per product over time", y="Products", x = "Time")+
+  theme_update(plot.title = element_text(hjust = 0.5))
+```
+
+*Exploration of variable 'reviews.rating'*
+Check for NA's (Products not considered for analysis)
+```{r}
+sum(is.na(data4$reviews.rating))
+```
+After removing missing data of the previous variables, there are 19 empty values left at reviews.rating.
+
+Remove missing values (NA's)
+```{r}
+data5 = data4[complete.cases(data4$reviews.rating),]
+```
+The new data frame has 34,023 observations, meaning the 19 entries where the review rating was missing were removed.
+
+
+Confirm that there is not a single missing value
+```{r}
+sum(is.na(data5$reviews.rating))
+```
+
+
+Review statistics
+```{r}
+describe(data5$reviews.rating)
+```
+
+Review ratings distribution
+```{r}    
+sort(table(data5$reviews.rating))
+```
+
+
+Review ratings distribution in a bar chart
+```{r}
+ggplot(data5, aes(x=data5$reviews.rating))+
+  geom_bar(data = data5, stat = "count", colour="black", fill="salmon2",
+  position = "stack")+
+   labs(title="Review ratings per star category", y="#reviews", x = "Star rating category")+
+  theme_update(plot.title = element_text(hjust = 0.5))
+```
+
+
+*Exploration of variable 'reviews.text'*
+Check for NA's 
+```{r}
+sum(is.na(data5$reviews.text))
+```
+
+Review statistics
+```{r}
+data5$textlength<-nchar(data5$reviews.text)
+describe(data5$textlength)
+```
+Mean = 158 words; Median = 107 words; min = 6 words, max = 8351 words
+
+
+Check reviews distribution by word count occurences
+```{r}
+sort(table(data5$textlength), decreasing = T)
+```
+
+
+Check potential outliers with word count > 4000
+```{r}
+filter(data5, data5$textlength > 4000)
+```
+
+
+Review length distribution in a bar chart (for word count < 1000)
+```{r}
+ggplot(data5, aes(x = data5$textlength, stat(count))) +
+  geom_histogram( bins=50, colour="black", fill="orange")+
+  geom_vline(aes(xintercept=mean(data5$textlength)),
+            color="black", linetype="dashed", size=1)+
+  labs(title="Review length distribution", y="# Reviews", x = "Words")+
+  theme_update(plot.title = element_text(hjust = 0.5))+
+  xlim(0, 1000)
+```
+
+
+Review length over time
+```{r}
+ ggplot(data5, aes(data5$day, data5$textlength, group = 1)) +
+          geom_line(colour="Orange") +
+          labs(title = "Review length over time", x = "Time", y = "Words") +
+  theme(legend.position="none")
+```
+
+
+
+*Explore data quality*
+
+    Variable 'asins' (Product)
+```{r}
+ ggplot(data5, aes(day,data5$Product, group = 1)) +
+  geom_point(colour= "dark green") +
+          labs(title = "Outliers - Reviews per product over time", x = "Time", y = "Products")+
+  theme(legend.position="none")
+```    
+
+
+    Variable 'reviews.date'
+```{r}
+ggplot(data5, aes(x=data5$month, stat(count))) + 
+ geom_histogram(bins=30, colour="black", fill="lightblue")+
+  geom_vline(aes(xintercept=mean(data5$day)),
+            color="black", linetype="dashed", size=1)+
+  labs(title="Outliers - Review date", y="#reviews", x = "Time")+
+  theme_update(plot.title = element_text(hjust = 0.5))
+``` 
+```{r}
+    filter(data5, day >= "2014-01-01", day <= "2015-06-01")
+```
+    
+    
+    Variable 'reviews.text' 
+```{r}
+ ggplot(data5, aes(data5$day, data5$textlength, group = 1, colour= "green")) +
+  geom_point() +
+          geom_smooth(method='lm',formula=y~x,col="dodgerblue") +
+         labs(title = "Outliers - Review length over time", x = "Time", y = "Words")+
+  theme(legend.position="none")
+```
+
+Remove outliers (review lenght > 4000)
+```{r}
+#Remove outliers (review length > 4000)
+data5 <- data5[data5$textlength < 4000,]
+```
+
+
+Show reviews from 2018
+```{r}
+filter(data5, day >= "2017-12-31", day <= "2019-01-01")
+```
+
+
+
+*4.3	Data preparation*
+
+*Select Data*
+Restructure data frame
+```{r}
+# remove reviews.date and month variables
+data5 = subset(data5, select = -c(reviews.date, month, textlength)) 
+```
+
+```{r}
+# Assign new names to columns
+names(data5) <- c("rating", "text", "product", "date")
+```
+
+```{r}
+# Change column order
+data5 <- data5[c("product","rating", "text", "date")]
+```
+
+
+```{r}
+#Remove all duplicates
+data6 <- distinct(data5, text, .keep_all = T)
+sum(duplicated(data5$reviews.text))
+sum(duplicated(data6$reviews.text))
+```
+
+Merging products 
+```{r}
+data6$product[data6$product == 'Fire 7 8GB' | data6$product == 'Fire 7 16GB'] <- 'Fire 7'
+data6$product[data6$product == 'Fire HD 8 16GB' | data6$product == 'Fire HD 8 32GB'] <- 'Fire HD 8'
+```
+
+
+Creating new subset for relevant time spans only
+
+1. 8 weeks before and after Prime Day's
+```{r}
+pre82015<-subset(data6, data6$date> "2015-05-19" & data6$date < "2015-07-16") #8 weeks before Prime Day '15
+pre82016<-subset(data6, data6$date> "2016-05-19" & data6$date < "2016-07-16") #8 weeks before Prime Day '16
+pre82017<-subset(data6, data6$date> "2017-05-17" & data6$date < "2017-07-12") #8 weeks before Prime Day '17
+pre8<- rbind(pre82015,pre82016,pre82017)                                      #8 weeks before all Prime Days
+aft82015<-subset(data6, data6$date> "2015-07-14" & data6$date < "2015-09-09") #8 weeks after Prime Day '15
+aft82016<-subset(data6, data6$date> "2016-07-14" & data6$date < "2016-09-09") #8 weeks after Prime Day '16
+aft82017<-subset(data6, data6$date> "2017-07-10" & data6$date < "2017-09-05") #8 weeks after Prime Day '17
+aft8<- rbind(aft82015,aft82016,aft82017)                                      #8 weeks after all Prime Days
+```
+
+2. 10 weeks before and after Prime Day's
+```{r}
+pre102015<-subset(data6, data6$date> "2015-05-05" & data6$date < "2015-07-16") #10 weeks before Prime Day '15
+pre102016<-subset(data6, data6$date> "2016-05-05" & data6$date < "2016-07-16") #10 weeks before Prime Day '16
+pre102017<-subset(data6, data6$date> "2017-05-01" & data6$date < "2017-07-12") #10 weeks before Prime Day '17
+pre10<- rbind(pre102015,pre102016,pre102017)                                   #10 weeks before all Prime Days
+aft102015<-subset(data6, data6$date> "2015-07-14" & data6$date < "2015-09-23") #10 weeks after Prime Day '15
+aft102016<-subset(data6, data6$date> "2016-07-14" & data6$date < "2016-09-23") #10 weeks after Prime Day '16
+aft102017<-subset(data6, data6$date> "2017-07-10" & data6$date < "2017-09-19") #10 weeks after Prime Day '17
+aft10<- rbind(aft102015,aft102016,aft102017)                                   #10 weeks after all Prime Days
+```
+
+3. 12 weeks before and after Prime Day's   
+```{r}
+pre122015<-subset(data6, data6$date> "2015-04-21" & data6$date < "2015-07-16") #12 weeks before Prime Day '15
+pre122016<-subset(data6, data6$date> "2016-04-21" & data6$date < "2016-07-16") #12 weeks before Prime Day '16
+pre122017<-subset(data6, data6$date> "2017-04-17" & data6$date < "2017-07-12") #12 weeks before Prime Day '17
+pre12<- rbind(pre122015,pre122016,pre122017)                                  #12 weeks before all Prime Days
+nrow(pre12)
+aft122015<-subset(data6, data6$date> "2015-07-14" & data6$date < "2015-10-07") #12 weeks after Prime Day '15
+aft122016<-subset(data6, data6$date> "2016-07-14" & data6$date < "2016-10-07") #12 weeks after Prime Day '16
+aft122017<-subset(data6, data6$date> "2017-07-10" & data6$date < "2017-10-03") #12 weeks after Prime Day '17
+aft12<- rbind(aft122015,aft122016,aft122017)                                   #12 weeks after all Prime Days
+nrow(aft12)
+```
+
+*General data set cleaning* 
+
+```{r}            
+# Create new data frame for relevant reviews only 
+data6 <- rbind(pre12,aft12)
+nrow(data6)
+```
+
+```{r}            
+# Encode all text with latin1 and ASCII 
+data6$text<-invisible(iconv(data6$text, "latin1", "ASCII", sub=""))
+```
+
+```{r}
+#Remove all non-alphanumeric characters.
+data6$text<-invisible(str_replace_all(data6$text, "[^[:alnum:]]", " "))
+```
+
+For faster processing remove previous data frames 
+```{r}            
+rm(dataset, data1, data2, data3, data4, data5) 
+```
+
+
+*Text mining* 
+
+```{r}  
+# Create text corpora of data set
+totalCorpus <- Corpus(VectorSource(data6$text))
+# Remove special characters
+preprocessCorpus(totalCorpus)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+totalCorpus <- tm_map(totalCorpus, space, "/")
+totalCorpus <- tm_map(totalCorpus, space, "@")
+totalCorpus <- tm_map(totalCorpus, space, "\\|")
+# Convert text to lower case
+totalCorpus <- tm_map(totalCorpus, content_transformer(tolower))
+# Remove numbers
+totalCorpus <- tm_map(totalCorpus, removeNumbers)
+# Remove common stopwords
+totalCorpus <- tm_map(totalCorpus, removeWords, stopwords("english"))
+# Remove defined words
+totalCorpus <- tm_map(totalCorpus, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" ))
+# Remove punctuations
+totalCorpus <- tm_map(totalCorpus, removePunctuation)
+# Remove white spaces
+totalCorpus <- tm_map(totalCorpus, stripWhitespace)
+# Stem texts
+totalCorpus <- tm_map(totalCorpus, stemDocument)
+```
+
+```{r}
+# Total Sentiment score and rating means
+TotalSentiment <- analyzeSentiment(totalCorpus)
+TotalMeanSent <- mean(TotalSentiment$SentimentGI, na.rm = TRUE)
+TotalMeanSent
+
+# Mean star rating
+TotalMeanRating <- mean(data6$rating, na.rm = TRUE) 
+TotalMeanRating 
+
+# No. of positive, neutral and negative reviews
+Totalreviews <- table(TotalSentiment$SentimentGI)
+Totalposreviews <- sum(Totalreviews[names(Totalreviews)> 0])#positive
+Totalposreviews
+Totalneutreviews <- sum(Totalreviews[names(Totalreviews)== 0])#neutral
+Totalneutreviews
+Totalnegreviews <- sum(Totalreviews[names(Totalreviews)< 0]) #negative
+Totalnegreviews
+TotalReviewRatio <- (Totalposreviews)/(Totalposreviews+Totalneutreviews+Totalnegreviews)
+TotalReviewRatio
+```
+
+
+*Clean Data*
+
+```{r}  
+# Create text corpora of subsets
+pre82015docs <- Corpus(VectorSource(pre82015$text))
+pre82016docs <- Corpus(VectorSource(pre82016$text))
+pre82017docs <- Corpus(VectorSource(pre82017$text))
+pre8docs <- Corpus(VectorSource(pre8$text))
+pre102015docs <- Corpus(VectorSource(pre102015$text))
+pre102016docs <- Corpus(VectorSource(pre102016$text))
+pre102017docs <- Corpus(VectorSource(pre102017$text))
+pre10docs <- Corpus(VectorSource(pre10$text))
+pre122015docs <- Corpus(VectorSource(pre122015$text))
+pre122016docs <- Corpus(VectorSource(pre122016$text))
+pre122017docs <- Corpus(VectorSource(pre122017$text))
+pre12docs <- Corpus(VectorSource(pre12$text))
+
+aft82015docs <- Corpus(VectorSource(aft82015$text))
+aft82016docs <- Corpus(VectorSource(aft82016$text))
+aft82017docs <- Corpus(VectorSource(aft82017$text))
+aft8docs <- Corpus(VectorSource(aft8$text))
+aft102015docs <- Corpus(VectorSource(aft102015$text))
+aft102016docs <- Corpus(VectorSource(aft102016$text))
+aft102017docs <- Corpus(VectorSource(aft102017$text))
+aft10docs <- Corpus(VectorSource(aft10$text))
+aft122015docs <- Corpus(VectorSource(aft122015$text))
+aft122016docs <- Corpus(VectorSource(aft122016$text))
+aft122017docs <- Corpus(VectorSource(aft122017$text))
+aft12docs <- Corpus(VectorSource(aft12$text))
+```
+
+*Prior 8 weeks*
+2015
+```{r}  
+# Remove special characters
+preprocessCorpus(pre82015docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre82015docs <- tm_map(pre82015docs, space, "/")
+pre82015docs <- tm_map(pre82015docs, space, "@")
+pre82015docs <- tm_map(pre82015docs, space, "\\|")
+# Convert text to lower case
+pre82015docs <- tm_map(pre82015docs, content_transformer(tolower))
+# Remove numbers
+pre82015docs <- tm_map(pre82015docs, removeNumbers)
+# Remove common stopwords
+pre82015docs <- tm_map(pre82015docs, removeWords, stopwords("english"))
+# Remove defined words
+pre82015docs <- tm_map(pre82015docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" ))
+# Remove punctuations
+pre82015docs <- tm_map(pre82015docs, removePunctuation)
+# Remove white spaces
+pre82015docs <- tm_map(pre82015docs, stripWhitespace)
+# Stem texts
+pre82015docs <- tm_map(pre82015docs, stemDocument)
+```
+
+
+*Data Processing*
+```{r}  
+#Convert corpus
+pre82015dtm <- TermDocumentMatrix(pre82015docs)
+pre82015m <- as.matrix(pre82015dtm)
+pre82015sort <- sort(rowSums(pre82015m),decreasing=TRUE)
+pre82015df <- data.frame(word = names(pre82015sort),freq=pre82015sort)
+#Show top 10 most frequent words with count
+wordspre815<-head(pre82015df, 10)
+wordspre815
+```
+
+
+```{r}  
+# Mean sentiment score of time frame
+pre82015$sentiment <- analyzeSentiment(pre82015docs,aggregate = NULL)
+meanSApre815 <-mean(pre82015$sentiment$SentimentG, na.rm = TRUE)
+meanSApre815
+# Mean star rating
+meanratingpre815 <- mean(pre82015$rating) 
+meanratingpre815
+```
+
+```{r} 
+#Show each review's individual sentiment direction (pos/neut/neg)
+pre82015$direction <- convertToDirection(pre82015$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment ratio pos/neg
+pospre82015 <- pre82015$direction == 'positive'
+neutpre82015 <- pre82015$direction == 'neutral'
+# Sentiment associations
+          #find associations (correlations) between frequent terms
+findAssocs(pre82015dtm, terms = "like", corlimit = 0.5)
+negpre82015 <- pre82015$direction == 'negative'
+pre82015ratio <- (sum(pospre82015)/sum(pospre82015+neutpre82015+negpre82015))
+pre82015ratio
+```
+
+
+2016
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre82016docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre82016docs <- tm_map(pre82016docs, space, "/")
+pre82016docs <- tm_map(pre82016docs, space, "@")
+pre82016docs <- tm_map(pre82016docs, space, "\\|")
+# Convert text to lower case
+pre82016docs <- tm_map(pre82016docs, content_transformer(tolower))
+# Remove numbers
+pre82016docs <- tm_map(pre82016docs, removeNumbers)
+# Remove common stopwords
+pre82016docs <- tm_map(pre82016docs, removeWords, stopwords("english"))
+# Remove defined words
+pre82016docs <- tm_map(pre82016docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre82016docs <- tm_map(pre82016docs, removePunctuation)
+# Remove white spaces
+pre82016docs <- tm_map(pre82016docs, stripWhitespace)
+# Stem texts
+pre82016docs <- tm_map(pre82016docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre82016dtm <- TermDocumentMatrix(pre82016docs)
+pre82016m <- as.matrix(pre82016dtm)
+pre82016sort <- sort(rowSums(pre82016m),decreasing=TRUE)
+pre82016df <- data.frame(word = names(pre82016sort),freq=pre82016sort)
+#Show top 10 most frequent words with count
+wordspre816<-head(pre82016df, 10)
+wordspre816
+```
+
+
+```{r}  
+# Sentiment scores per review
+pre82016$sentiment <- analyzeSentiment(pre82016docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre816 <- mean(pre82016$sentiment$SentimentGI, na.rm = TRUE) 
+meanSApre816
+# Mean star rating
+meanratingpre816 <- mean(pre82016$rating) 
+meanratingpre816 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+pre82016$direction <- convertToDirection(pre82016$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+pospre82016 <- pre82016$direction == 'positive'
+neutpre82016 <- pre82016$direction == 'neutral'
+negpre82016 <- pre82016$direction == 'negative'
+pre82016ratio <- (sum(pospre82016)/sum(pospre82016+neutpre82016+negpre82016))
+pre82016ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(pre82016dtm, terms = "like", corlimit = 0.2)
+```
+
+
+
+2017
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre82017docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre82017docs <- tm_map(pre82017docs, space, "/")
+pre82017docs <- tm_map(pre82017docs, space, "@")
+pre82017docs <- tm_map(pre82017docs, space, "\\|")
+# Convert text to lower case
+pre82017docs <- tm_map(pre82017docs, content_transformer(tolower))
+# Remove numbers
+pre82017docs <- tm_map(pre82017docs, removeNumbers)
+# Remove common stopwords
+pre82017docs <- tm_map(pre82017docs, removeWords, stopwords("english"))
+# Remove defined words
+pre82017docs <- tm_map(pre82017docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre82017docs <- tm_map(pre82017docs, removePunctuation)
+# Remove white spaces
+pre82017docs <- tm_map(pre82017docs, stripWhitespace)
+# Stem texts
+pre82017docs <- tm_map(pre82017docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre82017dtm <- TermDocumentMatrix(pre82017docs)
+pre82017m <- as.matrix(pre82017dtm)
+pre82017sort <- sort(rowSums(pre82017m),decreasing=TRUE)
+pre82017df <- data.frame(word = names(pre82017sort),freq=pre82017sort)
+#Show top 10 most frequent words with count
+wordspre817<-head(pre82017df, 10)
+wordspre817
+```
+
+
+```{r}  
+# Sentiment scores per review
+pre82017$sentiment <- analyzeSentiment(pre82017docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre817 <- mean(pre82017$sentiment$SentimentGI, na.rm = TRUE)
+meanSApre817
+# Mean star rating
+meanratingpre817 <- mean(pre82017$rating) 
+meanratingpre817
+```
+
+```{r} 
+#Show each review's individual sentiment direction (pos/neut/neg)
+pre82017$direction <- convertToDirection(pre82017$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+pospre82017 <- pre82017$direction == 'positive'
+neutpre82017 <- pre82017$direction == 'neutral'
+negpre82017 <- pre82017$direction == 'negative'
+pre82017ratio <- (sum(pospre82017)/sum(pospre82017+neutpre82017+negpre82017))
+pre82017ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(pre82017dtm, terms = "like", corlimit = 0.2)
+```
+
+
+all Pre8 periods
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre8docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre8docs <- tm_map(pre8docs, space, "/")
+pre8docs <- tm_map(pre8docs, space, "@")
+pre8docs <- tm_map(pre8docs, space, "\\|")
+# Convert text to lower case
+pre8docs <- tm_map(pre8docs, content_transformer(tolower))
+# Remove numbers
+pre8docs <- tm_map(pre8docs, removeNumbers)
+# Remove common stopwords
+pre8docs <- tm_map(pre8docs, removeWords, stopwords("english"))
+# Remove defined words
+pre8docs <- tm_map(pre8docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre8docs <- tm_map(pre8docs, removePunctuation)
+# Remove white spaces
+pre8docs <- tm_map(pre8docs, stripWhitespace)
+# Stem texts
+pre8docs <- tm_map(pre8docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre8dtm <- TermDocumentMatrix(pre8docs)
+pre8m <- as.matrix(pre8dtm)
+pre8sort <- sort(rowSums(pre8m),decreasing=TRUE)
+pre8df <- data.frame(word = names(pre8sort),freq=pre8sort)
+#Show top 10 most frequent words with count
+wordspre8<-head(pre8df, 10)
+wordspre8
+```
+
+
+```{r}  
+# Sentiment scores per review
+pre8$sentiment <- analyzeSentiment(pre8docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre8 <- mean(pre8$sentiment$SentimentGI, na.rm = TRUE)
+meanSApre8
+# Mean star rating
+meanratingpre8 <- mean(pre8$rating) 
+meanratingpre8
+```
+
+```{r} 
+# No. of positive, neutral and negative reviews
+pre8reviews <- table(pre8$sentiment$SentimentGI)
+pre8posreviews <- sum(pre8reviews[names(pre8reviews)> 0])#positive
+pre8neutreviews <- sum(pre8reviews[names(pre8reviews)== 0])#neutral
+pre8negreviews <- sum(pre8reviews[names(pre8reviews)< 0]) #negative
+pre8ReviewRatio <- (pre8posreviews)/(pre8posreviews+pre8neutreviews+pre8negreviews)
+pre8ReviewRatio
+```
+
+
+
+*Prior 10 weeks*
+
+2015
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre102015docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre102015docs <- tm_map(pre102015docs, space, "/")
+pre102015docs <- tm_map(pre102015docs, space, "@")
+pre102015docs <- tm_map(pre102015docs, space, "\\|")
+# Convert text to lower case
+pre102015docs <- tm_map(pre102015docs, content_transformer(tolower))
+# Remove numbers
+pre102015docs <- tm_map(pre102015docs, removeNumbers)
+# Remove common stopwords
+pre102015docs <- tm_map(pre102015docs, removeWords, stopwords("english"))
+# Remove defined words
+pre102015docs <- tm_map(pre102015docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre102015docs <- tm_map(pre102015docs, removePunctuation)
+# Remove white spaces
+pre102015docs <- tm_map(pre102015docs, stripWhitespace)
+# Stem texts
+pre102015docs <- tm_map(pre102015docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre102015dtm <- TermDocumentMatrix(pre102015docs)
+pre102015m <- as.matrix(pre102015dtm)
+pre102015sort <- sort(rowSums(pre102015m),decreasing=TRUE)
+pre102015df <- data.frame(word = names(pre102015sort),freq=pre102015sort)
+#Show top 10 most frequent words with count
+wordspre1015<-head(pre102015df, 10)
+wordspre1015
+```
+
+
+```{r}  
+# Sentiment scores per review
+pre102015$sentiment <- analyzeSentiment(pre102015docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre1015 <- mean(pre102015$sentiment$SentimentGI, na.rm = TRUE) 
+meanSApre1015
+# Mean star rating
+meanratingpre1015 <- mean(pre102015$rating) 
+meanratingpre1015 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+pre102015$direction <- convertToDirection(pre102015$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+pospre102015 <- pre102015$direction == 'positive'
+neutpre102015 <- pre102015$direction == 'neutral'
+negpre102015 <- pre102015$direction == 'negative'
+pre102015ratio <- (sum(pospre102015)/sum(pospre102015+neutpre102015+negpre102015))
+pre102015ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(pre102015dtm, terms = "like", corlimit = 0.2)
+```
+
+
+2016
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre102016docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre102016docs <- tm_map(pre102016docs, space, "/")
+pre102016docs <- tm_map(pre102016docs, space, "@")
+pre102016docs <- tm_map(pre102016docs, space, "\\|")
+# Convert text to lower case
+pre102016docs <- tm_map(pre102016docs, content_transformer(tolower))
+# Remove numbers
+pre102016docs <- tm_map(pre102016docs, removeNumbers)
+# Remove common stopwords
+pre102016docs <- tm_map(pre102016docs, removeWords, stopwords("english"))
+# Remove defined words
+pre102016docs <- tm_map(pre102016docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre102016docs <- tm_map(pre102016docs, removePunctuation)
+# Remove white spaces
+pre102016docs <- tm_map(pre102016docs, stripWhitespace)
+# Stem texts
+pre102016docs <- tm_map(pre102016docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre102016dtm <- TermDocumentMatrix(pre102016docs)
+pre102016m <- as.matrix(pre102016dtm)
+pre102016sort <- sort(rowSums(pre102016m),decreasing=TRUE)
+pre102016df <- data.frame(word = names(pre102016sort),freq=pre102016sort)
+#Show top 10 most frequent words with count
+wordspre1016<-head(pre102016df, 10)
+wordspre1016
+```
+
+```{r}  
+# Sentiment scores per review
+pre102016$sentiment <- analyzeSentiment(pre102016docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre1016 <- mean(pre102016$sentiment$SentimentGI, na.rm = TRUE)
+meanSApre1016
+# Mean star rating
+meanratingpre1016 <- mean(pre102016$rating) 
+meanratingpre1016 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+pre102016$direction <- convertToDirection(pre102016$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+pospre102016 <- pre102016$direction == 'positive'
+neutpre102016 <- pre102016$direction == 'neutral'
+negpre102016 <- pre102016$direction == 'negative'
+pre102016ratio <- (sum(pospre102016)/sum(pospre102016+neutpre102016+negpre102016))
+pre102016ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(pre102016dtm, terms = "like", corlimit = 0.2)
+```
+
+2017
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre102017docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre102017docs <- tm_map(pre102017docs, space, "/")
+pre102017docs <- tm_map(pre102017docs, space, "@")
+pre102017docs <- tm_map(pre102017docs, space, "\\|")
+# Convert text to lower case
+pre102017docs <- tm_map(pre102017docs, content_transformer(tolower))
+# Remove numbers
+pre102017docs <- tm_map(pre102017docs, removeNumbers)
+# Remove common stopwords
+pre102017docs <- tm_map(pre102017docs, removeWords, stopwords("english"))
+# Remove defined words
+pre102017docs <- tm_map(pre102017docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre102017docs <- tm_map(pre102017docs, removePunctuation)
+# Remove white spaces
+pre102017docs <- tm_map(pre102017docs, stripWhitespace)
+# Stem texts
+pre102017docs <- tm_map(pre102017docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre102017dtm <- TermDocumentMatrix(pre102017docs)
+pre102017m <- as.matrix(pre102017dtm)
+pre102017sort <- sort(rowSums(pre102017m),decreasing=TRUE)
+pre102017df <- data.frame(word = names(pre102017sort),freq=pre102017sort)
+#Show top 10 most frequent words with count
+wordspre1017<-head(pre102017df, 10)
+wordspre1017
+```
+
+```{r}  
+# Sentiment scores per review
+pre102017$sentiment <- analyzeSentiment(pre102017docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre1017 <- mean(pre102017$sentiment$SentimentGI, na.rm = TRUE)
+meanSApre1017
+# Mean star rating
+meanratingpre1017 <- mean(pre102017$rating) 
+meanratingpre1017 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+pre102017$direction <- convertToDirection(pre102017$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+pospre102017 <- pre102017$direction == 'positive'
+neutpre102017 <- pre102017$direction == 'neutral'
+negpre102017 <- pre102017$direction == 'negative'
+pre102017ratio <- (sum(pospre102017)/sum(pospre102017+neutpre102017+negpre102017))
+pre102017ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(pre102017dtm, terms = "like", corlimit = 0.2)
+```
+
+
+all Pre10 periods
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre10docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre10docs <- tm_map(pre10docs, space, "/")
+pre10docs <- tm_map(pre10docs, space, "@")
+pre10docs <- tm_map(pre10docs, space, "\\|")
+# Convert text to lower case
+pre10docs <- tm_map(pre10docs, content_transformer(tolower))
+# Remove numbers
+pre10docs <- tm_map(pre10docs, removeNumbers)
+# Remove common stopwords
+pre10docs <- tm_map(pre10docs, removeWords, stopwords("english"))
+# Remove defined words
+pre10docs <- tm_map(pre10docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre10docs <- tm_map(pre10docs, removePunctuation)
+# Remove white spaces
+pre10docs <- tm_map(pre10docs, stripWhitespace)
+# Stem texts
+pre10docs <- tm_map(pre10docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre10dtm <- TermDocumentMatrix(pre10docs)
+pre10m <- as.matrix(pre10dtm)
+pre10sort <- sort(rowSums(pre10m),decreasing=TRUE)
+pre10df <- data.frame(word = names(pre10sort),freq=pre10sort)
+#Show top 10 most frequent words with count
+wordspre10<-head(pre10df, 10)
+wordspre10
+```
+
+```{r}  
+# Sentiment scores per review
+pre10$sentiment <- analyzeSentiment(pre10docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre10 <- mean(pre10$sentiment$SentimentGI, na.rm = TRUE)
+meanSApre10
+# Mean star rating
+meanratingpre10 <- mean(pre10$rating) 
+meanratingpre10
+```
+
+```{r} 
+# No. of positive, neutral and negative reviews
+pre10reviews <- table(pre10$sentiment$SentimentGI)
+pre10posreviews <- sum(pre10reviews[names(pre10reviews)> 0])#positive
+pre10neutreviews <- sum(pre10reviews[names(pre10reviews)== 0])#neutral
+pre10negreviews <- sum(pre10reviews[names(pre10reviews)< 0]) #negative
+pre10ReviewRatio <- (pre10posreviews)/(pre10posreviews+pre10neutreviews+pre10negreviews)
+pre10ReviewRatio
+```
+
+
+
+*Prior 12 weeks*
+
+2015
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre122015docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre122015docs <- tm_map(pre122015docs, space, "/")
+pre122015docs <- tm_map(pre122015docs, space, "@")
+pre122015docs <- tm_map(pre122015docs, space, "\\|")
+# Convert text to lower case
+pre122015docs <- tm_map(pre122015docs, content_transformer(tolower))
+# Remove numbers
+pre122015docs <- tm_map(pre122015docs, removeNumbers)
+# Remove common stopwords
+pre122015docs <- tm_map(pre122015docs, removeWords, stopwords("english"))
+# Remove defined words
+pre122015docs <- tm_map(pre122015docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre122015docs <- tm_map(pre122015docs, removePunctuation)
+# Remove white spaces
+pre122015docs <- tm_map(pre122015docs, stripWhitespace)
+# Stem texts
+pre122015docs <- tm_map(pre122015docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre122015dtm <- TermDocumentMatrix(pre122015docs)
+pre122015m <- as.matrix(pre122015dtm)
+pre122015sort <- sort(rowSums(pre122015m),decreasing=TRUE)
+pre122015df <- data.frame(word = names(pre122015sort),freq=pre122015sort)
+#Show top 10 most frequent words with count
+wordspre1215<-head(pre122015df, 10)
+wordspre1215
+```
+
+```{r}  
+# Sentiment scores per review
+pre122015$sentiment <- analyzeSentiment(pre122015docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre1215 <- mean(pre122015$sentiment$SentimentGI, na.rm = TRUE) 
+meanSApre1215
+# Mean star rating
+meanratingpre1215 <- mean(pre122015$rating) 
+meanratingpre1215 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+pre122015$direction <- convertToDirection(pre122015$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+pospre122015 <- pre122015$direction == 'positive'
+neutpre122015 <- pre122015$direction == 'neutral'
+negpre122015 <- pre122015$direction == 'negative'
+pre122015ratio <- (sum(pospre122015)/sum(pospre122015+neutpre122015+negpre122015))
+pre122015ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(pre122015dtm, terms = "like", corlimit = 0.2)
+```
+
+
+2016
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre122016docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre122016docs <- tm_map(pre122016docs, space, "/")
+pre122016docs <- tm_map(pre122016docs, space, "@")
+pre122016docs <- tm_map(pre122016docs, space, "\\|")
+# Convert text to lower case
+pre122016docs <- tm_map(pre122016docs, content_transformer(tolower))
+# Remove numbers
+pre122016docs <- tm_map(pre122016docs, removeNumbers)
+# Remove common stopwords
+pre122016docs <- tm_map(pre122016docs, removeWords, stopwords("english"))
+# Remove defined words
+pre122016docs <- tm_map(pre122016docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre122016docs <- tm_map(pre122016docs, removePunctuation)
+# Remove white spaces
+pre122016docs <- tm_map(pre122016docs, stripWhitespace)
+# Stem texts
+pre122016docs <- tm_map(pre122016docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre122016dtm <- TermDocumentMatrix(pre122016docs)
+pre122016m <- as.matrix(pre122016dtm)
+pre122016sort <- sort(rowSums(pre122016m),decreasing=TRUE)
+pre122016df <- data.frame(word = names(pre122016sort),freq=pre122016sort)
+#Show top 10 most frequent words with count
+wordspre1216<-head(pre122016df, 10)
+wordspre1216
+```
+
+```{r}  
+# Sentiment scores per review
+pre122016$sentiment <- analyzeSentiment(pre122016docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre1216 <- mean(pre122016$sentiment$SentimentGI, na.rm = TRUE) 
+meanSApre1216
+# Mean star rating
+meanratingpre1216 <- mean(pre122016$rating) 
+meanratingpre1216 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+pre122016$direction <- convertToDirection(pre122016$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+pospre122016 <- pre122016$direction == 'positive'
+neutpre122016 <- pre122016$direction == 'neutral'
+negpre122016 <- pre122016$direction == 'negative'
+pre122016ratio <- (sum(pospre122016)/sum(pospre122016+neutpre122016+negpre122016))
+pre122016ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(pre122016dtm, terms = "like", corlimit = 0.2)
+```
+
+2017
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre122017docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre122017docs <- tm_map(pre122017docs, space, "/")
+pre122017docs <- tm_map(pre122017docs, space, "@")
+pre122017docs <- tm_map(pre122017docs, space, "\\|")
+# Convert text to lower case
+pre122017docs <- tm_map(pre122017docs, content_transformer(tolower))
+# Remove numbers
+pre122017docs <- tm_map(pre122017docs, removeNumbers)
+# Remove common stopwords
+pre122017docs <- tm_map(pre122017docs, removeWords, stopwords("english"))
+# Remove defined words
+pre122017docs <- tm_map(pre122017docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre122017docs <- tm_map(pre122017docs, removePunctuation)
+# Remove white spaces
+pre122017docs <- tm_map(pre122017docs, stripWhitespace)
+# Stem texts
+pre122017docs <- tm_map(pre122017docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre122017dtm <- TermDocumentMatrix(pre122017docs)
+pre122017m <- as.matrix(pre122017dtm)
+pre122017sort <- sort(rowSums(pre122017m),decreasing=TRUE)
+pre122017df <- data.frame(word = names(pre122017sort),freq=pre122017sort)
+#Show top 10 most frequent words with count
+wordspre1217<-head(pre122017df, 10)
+wordspre1217
+```
+
+```{r}  
+# Sentiment scores per review
+pre122017$sentiment <- analyzeSentiment(pre122017docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre1217 <- mean(pre122017$sentiment$SentimentGI, na.rm = TRUE) 
+meanSApre1217
+# Mean star rating
+meanratingpre1217 <- mean(pre122017$rating) 
+meanratingpre1217 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+pre122017$direction <- convertToDirection(pre122017$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+pospre122017 <- pre122017$direction == 'positive'
+neutpre122017 <- pre122017$direction == 'neutral'
+negpre122017 <- pre122017$direction == 'negative'
+pre122017ratio <- (sum(pospre122017)/sum(pospre122017+neutpre122017+negpre122017))
+pre122017ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(pre122017dtm, terms = "like", corlimit = 0.2)
+```
+
+
+all Pre12 periods
+
+```{r}  
+# Remove special characters
+preprocessCorpus(pre12docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+pre12docs <- tm_map(pre12docs, space, "/")
+pre12docs <- tm_map(pre12docs, space, "@")
+pre12docs <- tm_map(pre12docs, space, "\\|")
+# Convert text to lower case
+pre12docs <- tm_map(pre12docs, content_transformer(tolower))
+# Remove numbers
+pre12docs <- tm_map(pre12docs, removeNumbers)
+# Remove common stopwords
+pre12docs <- tm_map(pre12docs, removeWords, stopwords("english"))
+# Remove defined words
+pre12docs <- tm_map(pre12docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+pre12docs <- tm_map(pre12docs, removePunctuation)
+# Remove white spaces
+pre12docs <- tm_map(pre12docs, stripWhitespace)
+# Stem texts
+pre12docs <- tm_map(pre12docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+pre12dtm <- TermDocumentMatrix(pre12docs)
+pre12m <- as.matrix(pre12dtm)
+pre12sort <- sort(rowSums(pre12m),decreasing=TRUE)
+pre12df <- data.frame(word = names(pre12sort),freq=pre12sort)
+#Show top 12 most frequent words with count
+wordspre12<-head(pre12df, 12)
+wordspre12
+#count observations in data frame
+nrow(pre12df)
+```
+
+```{r}  
+# Sentiment scores per review
+pre12$sentiment <- analyzeSentiment(pre12docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSApre12 <- mean(pre12$sentiment$SentimentGI, na.rm = TRUE)
+meanSApre12
+# Mean star rating
+meanratingpre12 <- mean(pre12$rating) 
+meanratingpre12
+```
+
+```{r} 
+# No. of positive, neutral and negative reviews
+pre12reviews <- table(pre12$sentiment$SentimentGI)
+pre12posreviews <- sum(pre12reviews[names(pre12reviews)> 0])#positive
+pre12neutreviews <- sum(pre12reviews[names(pre12reviews)== 0])#neutral
+pre12negreviews <- sum(pre12reviews[names(pre12reviews)< 0]) #negative
+pre12ReviewRatio <- (pre12posreviews)/(pre12posreviews+pre12neutreviews+pre12negreviews)
+pre12ReviewRatio
+```
+
+
+
+*post 8-weeks*
+
+2015
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft82015docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft82015docs <- tm_map(aft82015docs, space, "/")
+aft82015docs <- tm_map(aft82015docs, space, "@")
+aft82015docs <- tm_map(aft82015docs, space, "\\|")
+# Convert text to lower case
+aft82015docs <- tm_map(aft82015docs, content_transformer(tolower))
+# Remove numbers
+aft82015docs <- tm_map(aft82015docs, removeNumbers)
+# Remove common stopwords
+aft82015docs <- tm_map(aft82015docs, removeWords, stopwords("english"))
+# Remove defined words
+aft82015docs <- tm_map(aft82015docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" ))
+# Remove punctuations
+aft82015docs <- tm_map(aft82015docs, removePunctuation)
+# Remove white spaces
+aft82015docs <- tm_map(aft82015docs, stripWhitespace)
+# Stem texts
+aft82015docs <- tm_map(aft82015docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft82015dtm <- TermDocumentMatrix(aft82015docs)
+aft82015m <- as.matrix(aft82015dtm)
+aft82015sort <- sort(rowSums(aft82015m),decreasing=TRUE)
+aft82015df <- data.frame(word = names(aft82015sort),freq=aft82015sort)
+#Show top 10 most frequent words with count
+wordsaft815<-head(aft82015df, 10)
+wordsaft815
+```
+
+```{r}  
+# Sentiment scores per review
+aft82015$sentiment <- analyzeSentiment(aft82015docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft815 <- mean(aft82015$sentiment$SentimentGI, na.rm = TRUE) 
+meanSAaft815
+# Mean star rating
+meanratingaft815 <- mean(aft82015$rating) 
+meanratingaft815
+```
+
+```{r} 
+#Show each review's individual sentiment direction (pos/neut/neg)
+aft82015$direction <- convertToDirection(aft82015$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+posaft82015 <- aft82015$direction == 'positive'
+neutaft82015 <- aft82015$direction == 'neutral'
+negaft82015 <- aft82015$direction == 'negative'
+aft82015ratio <- (sum(posaft82015)/sum(posaft82015+neutaft82015+negaft82015))
+aft82015ratio
+```
+
+
+```{r} 
+# Sentiment associations
+findAssocs(aft82015dtm, terms = "like", corlimit = 0.3)
+```
+
+2016
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft82016docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft82016docs <- tm_map(aft82016docs, space, "/")
+aft82016docs <- tm_map(aft82016docs, space, "@")
+aft82016docs <- tm_map(aft82016docs, space, "\\|")
+# Convert text to lower case
+aft82016docs <- tm_map(aft82016docs, content_transformer(tolower))
+# Remove numbers
+aft82016docs <- tm_map(aft82016docs, removeNumbers)
+# Remove common stopwords
+aft82016docs <- tm_map(aft82016docs, removeWords, stopwords("english"))
+# Remove defined words
+aft82016docs <- tm_map(aft82016docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" ))
+# Remove punctuations
+aft82016docs <- tm_map(aft82016docs, removePunctuation)
+# Remove white spaces
+aft82016docs <- tm_map(aft82016docs, stripWhitespace)
+# Stem texts
+aft82016docs <- tm_map(aft82016docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft82016dtm <- TermDocumentMatrix(aft82016docs)
+aft82016m <- as.matrix(aft82016dtm)
+aft82016sort <- sort(rowSums(aft82016m),decreasing=TRUE)
+aft82016df <- data.frame(word = names(aft82016sort),freq=aft82016sort)
+#Show top 10 most frequent words with count
+wordsaft816<-head(aft82016df, 10)
+wordsaft816
+```
+
+```{r}  
+# Sentiment scores per review
+aft82016$sentiment <- analyzeSentiment(aft82016docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft816 <- mean(aft82016$sentiment$SentimentGI, na.rm = TRUE) 
+meanSAaft816
+# Mean star rating
+meanratingaft816 <- mean(aft82016$rating) 
+meanratingaft816
+```
+
+```{r} 
+#Show each review's individual sentiment direction (pos/neut/neg)
+aft82016$direction <- convertToDirection(aft82016$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+posaft82016 <- aft82016$direction == 'positive'
+neutaft82016 <- aft82016$direction == 'neutral'
+negaft82016 <- aft82016$direction == 'negative'
+aft82016ratio <- (sum(posaft82016)/sum(posaft82016+neutaft82016+negaft82016))
+aft82016ratio
+```
+
+```{r} 
+# Sentiment associations
+findAssocs(aft82016dtm, terms = "like", corlimit = 0.3)
+```
+
+
+2017
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft82017docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft82017docs <- tm_map(aft82017docs, space, "/")
+aft82017docs <- tm_map(aft82017docs, space, "@")
+aft82017docs <- tm_map(aft82017docs, space, "\\|")
+# Convert text to lower case
+aft82017docs <- tm_map(aft82017docs, content_transformer(tolower))
+# Remove numbers
+aft82017docs <- tm_map(aft82017docs, removeNumbers)
+# Remove common stopwords
+aft82017docs <- tm_map(aft82017docs, removeWords, stopwords("english"))
+# Remove defined words
+aft82017docs <- tm_map(aft82017docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" ))
+# Remove punctuations
+aft82017docs <- tm_map(aft82017docs, removePunctuation)
+# Remove white spaces
+aft82017docs <- tm_map(aft82017docs, stripWhitespace)
+# Stem texts
+aft82017docs <- tm_map(aft82017docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft82017dtm <- TermDocumentMatrix(aft82017docs)
+aft82017m <- as.matrix(aft82017dtm)
+aft82017sort <- sort(rowSums(aft82017m),decreasing=TRUE)
+aft82017df <- data.frame(word = names(aft82017sort),freq=aft82017sort)
+#Show top 10 most frequent words with count
+wordsaft817<-head(aft82017df, 10)
+wordsaft817
+```
+
+```{r}  
+# Sentiment scores per review
+aft82017$sentiment <- analyzeSentiment(aft82017docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft817 <- mean(aft82017$sentiment$SentimentGI, na.rm = TRUE) 
+meanSAaft817
+# Mean star rating
+meanratingaft817 <- mean(aft82017$rating) 
+meanratingaft817
+```
+
+```{r} 
+#Show each review's individual sentiment direction (pos/neut/neg)
+aft82017$direction <- convertToDirection(aft82017$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+posaft82017 <- aft82017$direction == 'positive'
+neutaft82017 <- aft82017$direction == 'neutral'
+negaft82017 <- aft82017$direction == 'negative'
+aft82017ratio <- (sum(posaft82017)/sum(posaft82017+neutaft82017+negaft82017))
+aft82017ratio
+```
+
+```{r} 
+# Sentiment associations
+findAssocs(aft82017dtm, terms = "like", corlimit = 0.2)
+```
+
+
+all aft8 periods
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft8docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft8docs <- tm_map(aft8docs, space, "/")
+aft8docs <- tm_map(aft8docs, space, "@")
+aft8docs <- tm_map(aft8docs, space, "\\|")
+# Convert text to lower case
+aft8docs <- tm_map(aft8docs, content_transformer(tolower))
+# Remove numbers
+aft8docs <- tm_map(aft8docs, removeNumbers)
+# Remove common stopwords
+aft8docs <- tm_map(aft8docs, removeWords, stopwords("english"))
+# Remove defined words
+aft8docs <- tm_map(aft8docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+aft8docs <- tm_map(aft8docs, removePunctuation)
+# Remove white spaces
+aft8docs <- tm_map(aft8docs, stripWhitespace)
+# Stem texts
+aft8docs <- tm_map(aft8docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft8dtm <- TermDocumentMatrix(aft8docs)
+aft8m <- as.matrix(aft8dtm)
+aft8sort <- sort(rowSums(aft8m),decreasing=TRUE)
+aft8df <- data.frame(word = names(aft8sort),freq=aft8sort)
+#Show top 12 most frequent words with count
+wordsaft8<-head(aft8df, 12)
+wordsaft8
+```
+
+```{r}  
+# Sentiment scores per review
+aft8$sentiment <- analyzeSentiment(aft8docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft8 <- mean(aft8$sentiment$SentimentGI, na.rm = TRUE)
+meanSAaft8
+# Mean star rating
+meanratingaft8 <- mean(aft8$rating) 
+meanratingaft8
+```
+
+```{r} 
+# No. of positive, neutral and negative reviews
+aft8reviews <- table(aft8$sentiment$SentimentGI)
+aft8posreviews <- sum(aft8reviews[names(aft8reviews)> 0])#positive
+aft8neutreviews <- sum(aft8reviews[names(aft8reviews)== 0])#neutral
+aft8negreviews <- sum(aft8reviews[names(aft8reviews)< 0]) #negative
+aft8ReviewRatio <- (aft8posreviews)/(aft8posreviews+aft8neutreviews+aft8negreviews)
+aft8ReviewRatio
+```
+
+
+*Post 10 weeks*
+
+2015
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft102015docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft102015docs <- tm_map(aft102015docs, space, "/")
+aft102015docs <- tm_map(aft102015docs, space, "@")
+aft102015docs <- tm_map(aft102015docs, space, "\\|")
+# Convert text to lower case
+aft102015docs <- tm_map(aft102015docs, content_transformer(tolower))
+# Remove numbers
+aft102015docs <- tm_map(aft102015docs, removeNumbers)
+# Remove common stopwords
+aft102015docs <- tm_map(aft102015docs, removeWords, stopwords("english"))
+# Remove defined words
+aft102015docs <- tm_map(aft102015docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+aft102015docs <- tm_map(aft102015docs, removePunctuation)
+# Remove white spaces
+aft102015docs <- tm_map(aft102015docs, stripWhitespace)
+# Stem texts
+aft102015docs <- tm_map(aft102015docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft102015dtm <- TermDocumentMatrix(aft102015docs)
+aft102015m <- as.matrix(aft102015dtm)
+aft102015sort <- sort(rowSums(aft102015m),decreasing=TRUE)
+aft102015df <- data.frame(word = names(aft102015sort),freq=aft102015sort)
+#Show top 10 most frequent words with count
+wordsaft1015<-head(aft102015df, 10)
+wordsaft1015
+```
+
+```{r}  
+# Sentiment scores per review
+aft102015$sentiment <- analyzeSentiment(aft102015docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft1015 <- mean(aft102015$sentiment$SentimentGI, na.rm = TRUE)
+meanSAaft1015
+# Mean star rating
+meanratingaft1015 <- mean(aft102015$rating) 
+meanratingaft1015 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+aft102015$direction <- convertToDirection(aft102015$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+posaft102015 <- aft102015$direction == 'positive'
+neutaft102015 <- aft102015$direction == 'neutral'
+negaft102015 <- aft102015$direction == 'negative'
+aft102015ratio <- (sum(posaft102015)/sum(posaft102015+neutaft102015+negaft102015))
+aft102015ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(aft102015dtm, terms = "like", corlimit = 0.2)
+```
+
+
+2016
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft102016docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft102016docs <- tm_map(aft102016docs, space, "/")
+aft102016docs <- tm_map(aft102016docs, space, "@")
+aft102016docs <- tm_map(aft102016docs, space, "\\|")
+# Convert text to lower case
+aft102016docs <- tm_map(aft102016docs, content_transformer(tolower))
+# Remove numbers
+aft102016docs <- tm_map(aft102016docs, removeNumbers)
+# Remove common stopwords
+aft102016docs <- tm_map(aft102016docs, removeWords, stopwords("english"))
+# Remove defined words
+aft102016docs <- tm_map(aft102016docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+aft102016docs <- tm_map(aft102016docs, removePunctuation)
+# Remove white spaces
+aft102016docs <- tm_map(aft102016docs, stripWhitespace)
+# Stem texts
+aft102016docs <- tm_map(aft102016docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft102016dtm <- TermDocumentMatrix(aft102016docs)
+aft102016m <- as.matrix(aft102016dtm)
+aft102016sort <- sort(rowSums(aft102016m),decreasing=TRUE)
+aft102016df <- data.frame(word = names(aft102016sort),freq=aft102016sort)
+#Show top 10 most frequent words with count
+wordsaft1016<-head(aft102016df, 10)
+wordsaft1016
+```
+
+```{r}  
+# Sentiment scores per review
+aft102016$sentiment <- analyzeSentiment(aft102016docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft1016 <- mean(aft102016$sentiment$SentimentGI, na.rm = TRUE) 
+meanSAaft1016
+# Mean star rating
+meanratingaft1016 <- mean(aft102016$rating) 
+meanratingaft1016 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+aft102016$direction <- convertToDirection(aft102016$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+posaft102016 <- aft102016$direction == 'positive'
+posaft102016 <- posaft102016[!is.na(posaft102016)]
+neutaft102016 <- aft102016$direction == 'neutral'
+negaft102016 <- aft102016$direction == 'negative'
+aft102016ratio <- (sum(posaft102016)/2520)
+aft102016ratio
+```
+
+```{r} 
+# Sentiment associations
+findAssocs(aft102016dtm, terms = "like", corlimit = 0.2)
+```
+
+2017
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft102017docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft102017docs <- tm_map(aft102017docs, space, "/")
+aft102017docs <- tm_map(aft102017docs, space, "@")
+aft102017docs <- tm_map(aft102017docs, space, "\\|")
+# Convert text to lower case
+aft102017docs <- tm_map(aft102017docs, content_transformer(tolower))
+# Remove numbers
+aft102017docs <- tm_map(aft102017docs, removeNumbers)
+# Remove common stopwords
+aft102017docs <- tm_map(aft102017docs, removeWords, stopwords("english"))
+# Remove defined words
+aft102017docs <- tm_map(aft102017docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+aft102017docs <- tm_map(aft102017docs, removePunctuation)
+# Remove white spaces
+aft102017docs <- tm_map(aft102017docs, stripWhitespace)
+# Stem texts
+aft102017docs <- tm_map(aft102017docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft102017dtm <- TermDocumentMatrix(aft102017docs)
+aft102017m <- as.matrix(aft102017dtm)
+aft102017sort <- sort(rowSums(aft102017m),decreasing=TRUE)
+aft102017df <- data.frame(word = names(aft102017sort),freq=aft102017sort)
+#Show top 10 most frequent words with count
+wordsaft1017<-head(aft102017df, 10)
+wordsaft1017
+```
+
+```{r}  
+# Sentiment scores per review
+aft102017$sentiment <- analyzeSentiment(aft102017docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft1017 <- mean(aft102017$sentiment$SentimentGI, na.rm = TRUE) 
+meanSAaft1017
+# Mean star rating
+meanratingaft1017 <- mean(aft102017$rating) 
+meanratingaft1017 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+aft102017$direction <- convertToDirection(aft102017$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+posaft102017 <- aft102017$direction == 'positive'
+neutaft102017 <- aft102017$direction == 'neutral'
+negaft102017 <- aft102017$direction == 'negative'
+aft102017ratio <- (sum(posaft102017)/sum(posaft102017+neutaft102017+negaft102017))
+aft102017ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(aft102017dtm, terms = "like", corlimit = 0.2)
+```
+
+
+all aft10 periods
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft10docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft10docs <- tm_map(aft10docs, space, "/")
+aft10docs <- tm_map(aft10docs, space, "@")
+aft10docs <- tm_map(aft10docs, space, "\\|")
+# Convert text to lower case
+aft10docs <- tm_map(aft10docs, content_transformer(tolower))
+# Remove numbers
+aft10docs <- tm_map(aft10docs, removeNumbers)
+# Remove common stopwords
+aft10docs <- tm_map(aft10docs, removeWords, stopwords("english"))
+# Remove defined words
+aft10docs <- tm_map(aft10docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+aft10docs <- tm_map(aft10docs, removePunctuation)
+# Remove white spaces
+aft10docs <- tm_map(aft10docs, stripWhitespace)
+# Stem texts
+aft10docs <- tm_map(aft10docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft10dtm <- TermDocumentMatrix(aft10docs)
+aft10m <- as.matrix(aft10dtm)
+aft10sort <- sort(rowSums(aft10m),decreasing=TRUE)
+aft10df <- data.frame(word = names(aft10sort),freq=aft10sort)
+#Show top 12 most frequent words with count
+wordsaft10<-head(aft10df, 12)
+wordsaft10
+```
+
+```{r}  
+# Sentiment scores per review
+aft10$sentiment <- analyzeSentiment(aft10docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft10 <- mean(aft10$sentiment$SentimentGI, na.rm = TRUE)
+meanSAaft10
+# Mean star rating
+meanratingaft10 <- mean(aft10$rating) 
+meanratingaft10
+```
+
+```{r} 
+# No. of positive, neutral and negative reviews
+aft10reviews <- table(aft10$sentiment$SentimentGI)
+aft10posreviews <- sum(aft10reviews[names(aft10reviews)> 0])#positive
+aft10neutreviews <- sum(aft10reviews[names(aft10reviews)== 0])#neutral
+aft10negreviews <- sum(aft10reviews[names(aft10reviews)< 0]) #negative
+aft10ReviewRatio <- (aft10posreviews)/(aft10posreviews+aft10neutreviews+aft10negreviews)
+aft10ReviewRatio
+```
+
+
+
+*Post 12 weeks*
+
+2015
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft122015docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft122015docs <- tm_map(aft122015docs, space, "/")
+aft122015docs <- tm_map(aft122015docs, space, "@")
+aft122015docs <- tm_map(aft122015docs, space, "\\|")
+# Convert text to lower case
+aft122015docs <- tm_map(aft122015docs, content_transformer(tolower))
+# Remove numbers
+aft122015docs <- tm_map(aft122015docs, removeNumbers)
+# Remove common stopwords
+aft122015docs <- tm_map(aft122015docs, removeWords, stopwords("english"))
+# Remove defined words
+aft122015docs <- tm_map(aft122015docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+aft122015docs <- tm_map(aft122015docs, removePunctuation)
+# Remove white spaces
+aft122015docs <- tm_map(aft122015docs, stripWhitespace)
+# Stem texts
+aft122015docs <- tm_map(aft122015docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft122015dtm <- TermDocumentMatrix(aft122015docs)
+aft122015m <- as.matrix(aft122015dtm)
+aft122015sort <- sort(rowSums(aft122015m),decreasing=TRUE)
+aft122015df <- data.frame(word = names(aft122015sort),freq=aft122015sort)
+#Show top 10 most frequent words with count
+wordsaft1215<-head(aft122015df, 10)
+wordsaft1215
+```
+
+```{r}  
+# Sentiment scores per review
+aft122015$sentiment <- analyzeSentiment(aft122015docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft1215 <- mean(aft122015$sentiment$SentimentGI, na.rm = TRUE) 
+meanSAaft1215
+# Mean star rating
+meanratingaft1215 <- mean(aft122015$rating) 
+meanratingaft1215 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+aft122015$direction <- convertToDirection(aft122015$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+posaft122015 <- aft122015$direction == 'positive'
+neutaft122015 <- aft122015$direction == 'neutral'
+negaft122015 <- aft122015$direction == 'negative'
+aft122015ratio <- (sum(posaft122015)/sum(posaft122015+neutaft122015+negaft122015))
+aft122015ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(aft122015dtm, terms = "like", corlimit = 0.2)
+```
+
+
+2016
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft122016docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft122016docs <- tm_map(aft122016docs, space, "/")
+aft122016docs <- tm_map(aft122016docs, space, "@")
+aft122016docs <- tm_map(aft122016docs, space, "\\|")
+# Convert text to lower case
+aft122016docs <- tm_map(aft122016docs, content_transformer(tolower))
+# Remove numbers
+aft122016docs <- tm_map(aft122016docs, removeNumbers)
+# Remove common stopwords
+aft122016docs <- tm_map(aft122016docs, removeWords, stopwords("english"))
+# Remove defined words
+aft122016docs <- tm_map(aft122016docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+aft122016docs <- tm_map(aft122016docs, removePunctuation)
+# Remove white spaces
+aft122016docs <- tm_map(aft122016docs, stripWhitespace)
+# Stem texts
+aft122016docs <- tm_map(aft122016docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft122016dtm <- TermDocumentMatrix(aft122016docs)
+aft122016m <- as.matrix(aft122016dtm)
+aft122016sort <- sort(rowSums(aft122016m),decreasing=TRUE)
+aft122016df <- data.frame(word = names(aft122016sort),freq=aft122016sort)
+#Show top 10 most frequent words with count
+wordsaft1216<-head(aft122016df, 10)
+wordsaft1216
+```
+
+```{r}  
+# Sentiment scores per review
+aft122016$sentiment <- analyzeSentiment(aft122016docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft1216 <- mean(aft122016$sentiment$SentimentGI, na.rm = TRUE) 
+meanSAaft1216
+# Mean star rating
+meanratingaft1216 <- mean(aft122016$rating) 
+meanratingaft1216 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+aft122016$direction <- convertToDirection(aft122016$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+posaft122016 <- aft122016$direction == 'positive'
+posaft122016 <- posaft122016[!is.na(posaft122016)]
+neutaft122016 <- aft122016$direction == 'neutral'
+negaft122016 <- aft122016$direction == 'negative'
+aft122016ratio <- (sum(posaft122016)/3027)
+aft122016ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(aft122016dtm, terms = "like", corlimit = 0.2)
+```
+
+2017
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft122017docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft122017docs <- tm_map(aft122017docs, space, "/")
+aft122017docs <- tm_map(aft122017docs, space, "@")
+aft122017docs <- tm_map(aft122017docs, space, "\\|")
+# Convert text to lower case
+aft122017docs <- tm_map(aft122017docs, content_transformer(tolower))
+# Remove numbers
+aft122017docs <- tm_map(aft122017docs, removeNumbers)
+# Remove common stopwords
+aft122017docs <- tm_map(aft122017docs, removeWords, stopwords("english"))
+# Remove defined words
+aft122017docs <- tm_map(aft122017docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+aft122017docs <- tm_map(aft122017docs, removePunctuation)
+# Remove white spaces
+aft122017docs <- tm_map(aft122017docs, stripWhitespace)
+# Stem texts
+aft122017docs <- tm_map(aft122017docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft122017dtm <- TermDocumentMatrix(aft122017docs)
+aft122017m <- as.matrix(aft122017dtm)
+aft122017sort <- sort(rowSums(aft122017m),decreasing=TRUE)
+aft122017df <- data.frame(word = names(aft122017sort),freq=aft122017sort)
+#Show top 10 most frequent words with count
+wordsaft1217<-head(aft122017df, 10)
+wordsaft1217
+```
+
+```{r}  
+# Sentiment scores per review
+aft122017$sentiment <- analyzeSentiment(aft122017docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft1217 <- mean(aft122017$sentiment$SentimentGI, na.rm = TRUE) 
+meanSAaft1217
+# Mean star rating
+meanratingaft1217 <- mean(aft122017$rating) 
+meanratingaft1217 
+```
+
+```{r} 
+# Show each review's individual sentiment direction (pos/neut/neg)
+aft122017$direction <- convertToDirection(aft122017$sentiment$SentimentGI)
+```
+
+```{r}  
+# Sentiment positive reviews ratio 
+posaft122017 <- aft122017$direction == 'positive'
+neutaft122017 <- aft122017$direction == 'neutral'
+negaft122017 <- aft122017$direction == 'negative'
+aft122017ratio <- (sum(posaft122017)/sum(posaft122017+neutaft122017+negaft122017))
+aft122017ratio
+```
+```{r} 
+# Sentiment associations
+findAssocs(aft122017dtm, terms = "like", corlimit = 0.2)
+```
+
+
+all aft12 periods
+
+```{r}  
+# Remove special characters
+preprocessCorpus(aft12docs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+aft12docs <- tm_map(aft12docs, space, "/")
+aft12docs <- tm_map(aft12docs, space, "@")
+aft12docs <- tm_map(aft12docs, space, "\\|")
+# Convert text to lower case
+aft12docs <- tm_map(aft12docs, content_transformer(tolower))
+# Remove numbers
+aft12docs <- tm_map(aft12docs, removeNumbers)
+# Remove common stopwords
+aft12docs <- tm_map(aft12docs, removeWords, stopwords("english"))
+# Remove defined words
+aft12docs <- tm_map(aft12docs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+aft12docs <- tm_map(aft12docs, removePunctuation)
+# Remove white spaces
+aft12docs <- tm_map(aft12docs, stripWhitespace)
+# Stem texts
+aft12docs <- tm_map(aft12docs, stemDocument)
+```
+
+*SA*
+Data Processing
+```{r}  
+#Convert corpus
+aft12dtm <- TermDocumentMatrix(aft12docs)
+aft12m <- as.matrix(aft12dtm)
+aft12sort <- sort(rowSums(aft12m),decreasing=TRUE)
+aft12df <- data.frame(word = names(aft12sort),freq=aft12sort)
+#Show top 12 most frequent words with count
+wordsaft12<-head(aft12df, 12)
+wordsaft12
+```
+
+```{r}  
+# Sentiment scores per review
+aft12$sentiment <- analyzeSentiment(aft12docs,aggregate = NULL)
+```
+
+```{r}  
+# Mean sentiment score of time frame
+meanSAaft12 <- mean(aft12$sentiment$SentimentGI, na.rm = TRUE)
+meanSAaft12
+# Mean star rating
+meanratingaft12 <- mean(aft12$rating) 
+meanratingaft12
+```
+
+```{r} 
+# No. of positive, neutral and negative reviews
+aft12reviews <- table(aft12$sentiment$SentimentGI)
+aft12posreviews <- sum(aft12reviews[names(aft12reviews)> 0])#positive
+aft12neutreviews <- sum(aft12reviews[names(aft12reviews)== 0])#neutral
+aft12negreviews <- sum(aft12reviews[names(aft12reviews)< 0]) #negative
+aft12ReviewRatio <- (aft12posreviews)/(aft12posreviews+aft12neutreviews+aft12negreviews)
+aft12ReviewRatio
+```
+
+
+
+----------------------------------------------SA by Product---------------------------------------------------------
+
+
+Fire 7
+
+```{r}
+#subdivide product reviews by 12 weeks before and after
+Fire7pre<-subset(data6, data6$product == 'Fire 7') 
+Fire7pre2015<-subset(Fire7pre, Fire7pre$date> "2015-04-21" & Fire7pre$date < "2015-07-16") #12 weeks before Prime Day '15
+Fire7pre2016<-subset(Fire7pre, Fire7pre$date> "2016-04-21" & Fire7pre$date < "2016-07-16") #12 weeks before Prime Day '16
+Fire7pre2017<-subset(Fire7pre, Fire7pre$date> "2017-04-17" & Fire7pre$date < "2017-07-12") #12 weeks before Prime Day '17
+Fire7pre<- rbind(Fire7pre2015,Fire7pre2016,Fire7pre2017)                    #12 weeks before all Prime Days
+nrow(Fire7pre)
+Fire7aft<-subset(data6, data6$product == 'Fire 7')
+Fire7aft2015<-subset(Fire7aft, Fire7aft$date> "2015-07-14" & Fire7aft$date < "2015-10-07") #12 weeks after Prime Day '15
+Fire7aft2016<-subset(Fire7aft, Fire7aft$date> "2016-07-14" & Fire7aft$date < "2016-10-07") #12 weeks after Prime Day '16
+Fire7aft2017<-subset(Fire7aft, Fire7aft$date> "2017-07-10" & Fire7aft$date < "2017-10-03") #12 weeks after Prime Day '17
+Fire7aft<- rbind(Fire7aft2015,Fire7aft2016,Fire7aft2017)                    #12 weeks after all Prime Days
+nrow(Fire7aft)
+```
+
+```{r}  
+#Create new corpus PRE
+Fire7predocs <- Corpus(VectorSource(Fire7pre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(Fire7predocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+Fire7predocs <- tm_map(Fire7predocs, space, "/")
+Fire7predocs <- tm_map(Fire7predocs, space, "@")
+Fire7predocs <- tm_map(Fire7predocs, space, "\\|")
+# Convert text to lower case
+Fire7predocs <- tm_map(Fire7predocs, content_transformer(tolower))
+# Remove numbers
+Fire7predocs <- tm_map(Fire7predocs, removeNumbers)
+# Remove common stopwords
+Fire7predocs <- tm_map(Fire7predocs, removeWords, stopwords("english"))
+# Remove defined words
+Fire7predocs <- tm_map(Fire7predocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+Fire7predocs <- tm_map(Fire7predocs, removePunctuation)
+# Remove white spaces
+Fire7predocs <- tm_map(Fire7predocs, stripWhitespace)
+# Stem texts
+Fire7predocs <- tm_map(Fire7predocs, stemDocument)
+
+#Sentiment mean
+Fire7present <- analyzeSentiment(Fire7predocs)
+Fire7premeanSent <- mean(Fire7present$SentimentGI, na.rm = TRUE)
+Fire7premeanSent
+#Star rating mean
+Fire7premeanRating <- mean(Fire7pre$rating)     
+Fire7premeanRating
+#positive reviews ratio 
+Fire7pre$direction <- convertToDirection(Fire7present$SentimentGI)
+posFire7pre <- Fire7pre$direction == 'positive'  
+posFire7pre <- posFire7pre[!is.na(posFire7pre)]
+neutFire7pre <- Fire7pre$direction == 'neutral'
+neutFire7pre <- neutFire7pre[!is.na(neutFire7pre)]
+negFire7pre <- Fire7pre$direction == 'negative'
+negFire7pre <- negFire7pre[!is.na(negFire7pre)]
+Fire7preratio <- (sum(posFire7pre)/sum(posFire7pre+neutFire7pre+negFire7pre))
+Fire7preratio
+```
+
+```{r}  
+#Create new corpus AFT
+Fire7aftdocs <- Corpus(VectorSource(Fire7aft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(Fire7aftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+Fire7aftdocs <- tm_map(Fire7aftdocs, space, "/")
+Fire7aftdocs <- tm_map(Fire7aftdocs, space, "@")
+Fire7aftdocs <- tm_map(Fire7aftdocs, space, "\\|")
+# Convert text to lower case
+Fire7aftdocs <- tm_map(Fire7aftdocs, content_transformer(tolower))
+# Remove numbers
+Fire7aftdocs <- tm_map(Fire7aftdocs, removeNumbers)
+# Remove common stopwords
+Fire7aftdocs <- tm_map(Fire7aftdocs, removeWords, stopwords("english"))
+# Remove defined words
+Fire7aftdocs <- tm_map(Fire7aftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+Fire7aftdocs <- tm_map(Fire7aftdocs, removePunctuation)
+# Remove white spaces
+Fire7aftdocs <- tm_map(Fire7aftdocs, stripWhitespace)
+# Stem texts
+Fire7aftdocs <- tm_map(Fire7aftdocs, stemDocument)
+
+#Sentiment mean
+Fire7aftsent <- analyzeSentiment(Fire7aftdocs)
+Fire7aftmeanSent <- mean(Fire7aftsent$SentimentGI, na.rm = TRUE)
+Fire7aftmeanSent
+#Star rating mean
+Fire7aftmeanRating <- mean(Fire7aft$rating)     
+Fire7aftmeanRating
+#positive reviews ratio 
+Fire7aft$direction <- convertToDirection(Fire7aftsent$SentimentGI)
+posFire7aft <- Fire7aft$direction == 'positive'  
+posFire7aft <- posFire7aft[!is.na(posFire7aft)]
+neutFire7aft <- Fire7aft$direction == 'neutral'
+neutFire7aft <- neutFire7aft[!is.na(neutFire7aft)]
+negFire7aft <- Fire7aft$direction == 'negative'
+negFire7aft <- negFire7aft[!is.na(negFire7aft)]
+Fire7aftratio <- (sum(posFire7aft)/sum(posFire7aft+neutFire7aft+negFire7aft))
+Fire7aftratio
+```
+
+
+Fire HD 8
+```{r}
+#subdivide product reviews by 12 weeks before and after
+FireHD8pre<-subset(data6, data6$product == 'Fire HD 8') 
+FireHD8pre2015<-subset(FireHD8pre, FireHD8pre$date> "2015-04-21" & FireHD8pre$date < "2015-07-16") #12 weeks before PD '15
+FireHD8pre2016<-subset(FireHD8pre, FireHD8pre$date> "2016-04-21" & FireHD8pre$date < "2016-07-16") #12 weeks before PD '16
+FireHD8pre2017<-subset(FireHD8pre, FireHD8pre$date> "2017-04-17" & FireHD8pre$date < "2017-07-12") #12 weeks before PD '17
+FireHD8pre<- rbind(FireHD8pre2015,FireHD8pre2016,FireHD8pre2017)                                   #12 weeks before all PDs
+nrow(FireHD8pre)
+FireHD8aft<-subset(data6, data6$product == 'Fire HD 8')
+FireHD8aft2015<-subset(FireHD8aft, FireHD8aft$date> "2015-07-14" & FireHD8aft$date < "2015-10-07") #12 weeks after PD '15
+FireHD8aft2016<-subset(FireHD8aft, FireHD8aft$date> "2016-07-14" & FireHD8aft$date < "2016-10-07") #12 weeks after PD '16
+FireHD8aft2017<-subset(FireHD8aft, FireHD8aft$date> "2017-07-10" & FireHD8aft$date < "2017-10-03") #12 weeks after PD '17
+FireHD8aft<- rbind(FireHD8aft2015,FireHD8aft2016,FireHD8aft2017)                                   #12 weeks after all PDs
+nrow(FireHD8aft)
+```
+
+```{r}  
+#Create new corpus PRE
+FireHD8predocs <- Corpus(VectorSource(FireHD8pre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(FireHD8predocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+FireHD8predocs <- tm_map(FireHD8predocs, space, "/")
+FireHD8predocs <- tm_map(FireHD8predocs, space, "@")
+FireHD8predocs <- tm_map(FireHD8predocs, space, "\\|")
+# Convert text to lower case
+FireHD8predocs <- tm_map(FireHD8predocs, content_transformer(tolower))
+# Remove numbers
+FireHD8predocs <- tm_map(FireHD8predocs, removeNumbers)
+# Remove common stopwords
+FireHD8predocs <- tm_map(FireHD8predocs, removeWords, stopwords("english"))
+# Remove defined words
+FireHD8predocs <- tm_map(FireHD8predocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+FireHD8predocs <- tm_map(FireHD8predocs, removePunctuation)
+# Remove white spaces
+FireHD8predocs <- tm_map(FireHD8predocs, stripWhitespace)
+# Stem texts
+FireHD8predocs <- tm_map(FireHD8predocs, stemDocument)
+
+#Sentiment mean
+FireHD8present <- analyzeSentiment(FireHD8predocs)
+FireHD8premeanSent <- mean(FireHD8present$SentimentGI, na.rm = TRUE)
+FireHD8premeanSent
+#Star rating mean
+FireHD8premeanRating <- mean(FireHD8pre$rating)     
+FireHD8premeanRating
+#positive reviews ratio 
+FireHD8pre$direction <- convertToDirection(FireHD8present$SentimentGI)
+posFireHD8pre <- FireHD8pre$direction == 'positive'  
+posFireHD8pre <- posFireHD8pre[!is.na(posFireHD8pre)]
+neutFireHD8pre <- FireHD8pre$direction == 'neutral'
+neutFireHD8pre <- neutFireHD8pre[!is.na(neutFireHD8pre)]
+negFireHD8pre <- FireHD8pre$direction == 'negative'
+negFireHD8pre <- negFireHD8pre[!is.na(negFireHD8pre)]
+FireHD8preratio <- (sum(posFireHD8pre)/sum(posFireHD8pre+neutFireHD8pre+negFireHD8pre))
+FireHD8preratio
+```
+
+```{r}  
+#Create new corpus AFT
+FireHD8aftdocs <- Corpus(VectorSource(FireHD8aft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(FireHD8aftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, space, "/")
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, space, "@")
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, space, "\\|")
+# Convert text to lower case
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, content_transformer(tolower))
+# Remove numbers
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, removeNumbers)
+# Remove common stopwords
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, removeWords, stopwords("english"))
+# Remove defined words
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, removePunctuation)
+# Remove white spaces
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, stripWhitespace)
+# Stem texts
+FireHD8aftdocs <- tm_map(FireHD8aftdocs, stemDocument)
+
+#Sentiment mean
+FireHD8aftsent <- analyzeSentiment(FireHD8aftdocs)
+FireHD8aftmeanSent <- mean(FireHD8aftsent$SentimentGI, na.rm = TRUE)
+FireHD8aftmeanSent
+#Star rating mean
+FireHD8aftmeanRating <- mean(FireHD8aft$rating)     
+FireHD8aftmeanRating
+#positive reviews ratio 
+FireHD8aft$direction <- convertToDirection(FireHD8aftsent$SentimentGI)
+posFireHD8aft <- FireHD8aft$direction == 'positive'  
+posFireHD8aft <- posFireHD8aft[!is.na(posFireHD8aft)]
+neutFireHD8aft <- FireHD8aft$direction == 'neutral'
+neutFireHD8aft <- neutFireHD8aft[!is.na(neutFireHD8aft)]
+negFireHD8aft <- FireHD8aft$direction == 'negative'
+negFireHD8aft <- negFireHD8aft[!is.na(negFireHD8aft)]
+FireHD8aftratio <- (sum(posFireHD8aft)/sum(posFireHD8aft+neutFireHD8aft+negFireHD8aft))
+FireHD8aftratio
+```
+
+Fire HD 10
+```{r}
+#subdivide product reviews by 12 weeks before and after
+FireHD10pre<-subset(data6, data6$product == 'Fire HD 10') 
+FireHD10pre2015<-subset(FireHD10pre, FireHD10pre$date> "2015-04-21" & FireHD10pre$date < "2015-07-16") #12 weeks before PD '15
+FireHD10pre2016<-subset(FireHD10pre, FireHD10pre$date> "2016-04-21" & FireHD10pre$date < "2016-07-16") #12 weeks before PD '16
+FireHD10pre2017<-subset(FireHD10pre, FireHD10pre$date> "2017-04-17" & FireHD10pre$date < "2017-07-12") #12 weeks before PD '17
+FireHD10pre<- rbind(FireHD10pre2015,FireHD10pre2016,FireHD10pre2017)                                   #12 weeks before all PDs
+nrow(FireHD10pre)
+FireHD10aft<-subset(data6, data6$product == 'Fire HD 10')
+FireHD10aft2015<-subset(FireHD10aft, FireHD10aft$date> "2015-07-14" & FireHD10aft$date < "2015-10-07") #12 weeks after PD '15
+FireHD10aft2016<-subset(FireHD10aft, FireHD10aft$date> "2016-07-14" & FireHD10aft$date < "2016-10-07") #12 weeks after PD '16
+FireHD10aft2017<-subset(FireHD10aft, FireHD10aft$date> "2017-07-10" & FireHD10aft$date < "2017-10-03") #12 weeks after PD '17
+FireHD10aft<- rbind(FireHD10aft2015,FireHD10aft2016,FireHD10aft2017)                                   #12 weeks after all PDs
+nrow(FireHD10aft)
+```
+
+```{r}  
+#Create new corpus PRE
+FireHD10predocs <- Corpus(VectorSource(FireHD10pre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(FireHD10predocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+FireHD10predocs <- tm_map(FireHD10predocs, space, "/")
+FireHD10predocs <- tm_map(FireHD10predocs, space, "@")
+FireHD10predocs <- tm_map(FireHD10predocs, space, "\\|")
+# Convert text to lower case
+FireHD10predocs <- tm_map(FireHD10predocs, content_transformer(tolower))
+# Remove numbers
+FireHD10predocs <- tm_map(FireHD10predocs, removeNumbers)
+# Remove common stopwords
+FireHD10predocs <- tm_map(FireHD10predocs, removeWords, stopwords("english"))
+# Remove defined words
+FireHD10predocs <- tm_map(FireHD10predocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+FireHD10predocs <- tm_map(FireHD10predocs, removePunctuation)
+# Remove white spaces
+FireHD10predocs <- tm_map(FireHD10predocs, stripWhitespace)
+# Stem texts
+FireHD10predocs <- tm_map(FireHD10predocs, stemDocument)
+
+#Sentiment mean
+FireHD10present <- analyzeSentiment(FireHD10predocs)
+FireHD10premeanSent <- mean(FireHD10present$SentimentGI, na.rm = TRUE)
+FireHD10premeanSent
+#Star rating mean
+FireHD10premeanRating <- mean(FireHD10pre$rating)     
+FireHD10premeanRating
+#positive reviews ratio 
+FireHD10pre$direction <- convertToDirection(FireHD10present$SentimentGI)
+posFireHD10pre <- FireHD10pre$direction == 'positive'  
+posFireHD10pre <- posFireHD10pre[!is.na(posFireHD10pre)]
+neutFireHD10pre <- FireHD10pre$direction == 'neutral'
+neutFireHD10pre <- neutFireHD10pre[!is.na(neutFireHD10pre)]
+negFireHD10pre <- FireHD10pre$direction == 'negative'
+negFireHD10pre <- negFireHD10pre[!is.na(negFireHD10pre)]
+FireHD10preratio <- (sum(posFireHD10pre)/sum(posFireHD10pre+neutFireHD10pre+negFireHD10pre))
+FireHD10preratio
+```
+
+```{r}  
+#Create new corpus AFT
+FireHD10aftdocs <- Corpus(VectorSource(FireHD10aft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(FireHD10aftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, space, "/")
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, space, "@")
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, space, "\\|")
+# Convert text to lower case
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, content_transformer(tolower))
+# Remove numbers
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, removeNumbers)
+# Remove common stopwords
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, removeWords, stopwords("english"))
+# Remove defined words
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, removePunctuation)
+# Remove white spaces
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, stripWhitespace)
+# Stem texts
+FireHD10aftdocs <- tm_map(FireHD10aftdocs, stemDocument)
+
+#Sentiment mean
+FireHD10aftsent <- analyzeSentiment(FireHD10aftdocs)
+FireHD10aftmeanSent <- mean(FireHD10aftsent$SentimentGI, na.rm = TRUE)
+FireHD10aftmeanSent
+#Star rating mean
+FireHD10aftmeanRating <- mean(FireHD10aft$rating)     
+FireHD10aftmeanRating
+#positive reviews ratio 
+FireHD10aft$direction <- convertToDirection(FireHD10aftsent$SentimentGI)
+posFireHD10aft <- FireHD10aft$direction == 'positive'  
+posFireHD10aft <- posFireHD10aft[!is.na(posFireHD10aft)]
+neutFireHD10aft <- FireHD10aft$direction == 'neutral'
+neutFireHD10aft <- neutFireHD10aft[!is.na(neutFireHD10aft)]
+negFireHD10aft <- FireHD10aft$direction == 'negative'
+negFireHD10aft <- negFireHD10aft[!is.na(negFireHD10aft)]
+FireHD10aftratio <- (sum(posFireHD10aft)/sum(posFireHD10aft+neutFireHD10aft+negFireHD10aft))
+FireHD10aftratio
+```
+
+
+Fire Kids Ed.
+```{r}
+#subdivide product reviews by 12 weeks before and after
+FireKidspre<-subset(data6, data6$product == 'Fire Kids Edition') 
+FireKidspre2015<-subset(FireKidspre, FireKidspre$date> "2015-04-21" & FireKidspre$date < "2015-07-16") #12 weeks before PD '15
+FireKidspre2016<-subset(FireKidspre, FireKidspre$date> "2016-04-21" & FireKidspre$date < "2016-07-16") #12 weeks before PD '16
+FireKidspre2017<-subset(FireKidspre, FireKidspre$date> "2017-04-17" & FireKidspre$date < "2017-07-12") #12 weeks before PD '17
+FireKidspre<- rbind(FireKidspre2015,FireKidspre2016,FireKidspre2017)                                   #12 weeks before all PDs
+nrow(FireKidspre)
+FireKidsaft<-subset(data6, data6$product == 'Fire Kids Edition')
+FireKidsaft2015<-subset(FireKidsaft, FireKidsaft$date> "2015-07-14" & FireKidsaft$date < "2015-10-07") #12 weeks after PD '15
+FireKidsaft2016<-subset(FireKidsaft, FireKidsaft$date> "2016-07-14" & FireKidsaft$date < "2016-10-07") #12 weeks after PD '16
+FireKidsaft2017<-subset(FireKidsaft, FireKidsaft$date> "2017-07-10" & FireKidsaft$date < "2017-10-03") #12 weeks after PD '17
+FireKidsaft<- rbind(FireKidsaft2015,FireKidsaft2016,FireKidsaft2017)                                   #12 weeks after all PDs
+nrow(FireKidsaft)
+```
+
+```{r}  
+#Create new corpus PRE
+FireKidspredocs <- Corpus(VectorSource(FireKidspre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(FireKidspredocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+FireKidspredocs <- tm_map(FireKidspredocs, space, "/")
+FireKidspredocs <- tm_map(FireKidspredocs, space, "@")
+FireKidspredocs <- tm_map(FireKidspredocs, space, "\\|")
+# Convert text to lower case
+FireKidspredocs <- tm_map(FireKidspredocs, content_transformer(tolower))
+# Remove numbers
+FireKidspredocs <- tm_map(FireKidspredocs, removeNumbers)
+# Remove common stopwords
+FireKidspredocs <- tm_map(FireKidspredocs, removeWords, stopwords("english"))
+# Remove defined words
+FireKidspredocs <- tm_map(FireKidspredocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+FireKidspredocs <- tm_map(FireKidspredocs, removePunctuation)
+# Remove white spaces
+FireKidspredocs <- tm_map(FireKidspredocs, stripWhitespace)
+# Stem texts
+FireKidspredocs <- tm_map(FireKidspredocs, stemDocument)
+
+#Sentiment mean
+FireKidspresent <- analyzeSentiment(FireKidspredocs)
+FireKidspremeanSent <- mean(FireKidspresent$SentimentGI, na.rm = TRUE)
+FireKidspremeanSent
+#Star rating mean
+FireKidspremeanRating <- mean(FireKidspre$rating)     
+FireKidspremeanRating
+#positive reviews ratio 
+FireKidspre$direction <- convertToDirection(FireKidspresent$SentimentGI)
+posFireKidspre <- FireKidspre$direction == 'positive'  
+posFireKidspre <- posFireKidspre[!is.na(posFireKidspre)]
+neutFireKidspre <- FireKidspre$direction == 'neutral'
+neutFireKidspre <- neutFireKidspre[!is.na(neutFireKidspre)]
+negFireKidspre <- FireKidspre$direction == 'negative'
+negFireKidspre <- negFireKidspre[!is.na(negFireKidspre)]
+FireKidspreratio <- (sum(posFireKidspre)/sum(posFireKidspre+neutFireKidspre+negFireKidspre))
+FireKidspreratio
+```
+
+```{r}  
+#Create new corpus AFT
+FireKidsaftdocs <- Corpus(VectorSource(FireKidsaft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(FireKidsaftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, space, "/")
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, space, "@")
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, space, "\\|")
+# Convert text to lower case
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, content_transformer(tolower))
+# Remove numbers
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, removeNumbers)
+# Remove common stopwords
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, removeWords, stopwords("english"))
+# Remove defined words
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, removePunctuation)
+# Remove white spaces
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, stripWhitespace)
+# Stem texts
+FireKidsaftdocs <- tm_map(FireKidsaftdocs, stemDocument)
+
+#Sentiment mean
+FireKidsaftsent <- analyzeSentiment(FireKidsaftdocs)
+FireKidsaftmeanSent <- mean(FireKidsaftsent$SentimentGI, na.rm = TRUE)
+FireKidsaftmeanSent
+#Star rating mean
+FireKidsaftmeanRating <- mean(FireKidsaft$rating)     
+FireKidsaftmeanRating
+#positive reviews ratio 
+FireKidsaft$direction <- convertToDirection(FireKidsaftsent$SentimentGI)
+posFireKidsaft <- FireKidsaft$direction == 'positive'  
+posFireKidsaft <- posFireKidsaft[!is.na(posFireKidsaft)]
+neutFireKidsaft <- FireKidsaft$direction == 'neutral'
+neutFireKidsaft <- neutFireKidsaft[!is.na(neutFireKidsaft)]
+negFireKidsaft <- FireKidsaft$direction == 'negative'
+negFireKidsaft <- negFireKidsaft[!is.na(negFireKidsaft)]
+FireKidsaftratio <- (sum(posFireKidsaft)/sum(posFireKidsaft+neutFireKidsaft+negFireKidsaft))
+FireKidsaftratio
+```
+
+
+Fire TV
+```{r}
+#subdivide product reviews by 12 weeks before and after
+FireTVpre<-subset(data6, data6$product == 'Fire TV') 
+FireTVpre2015<-subset(FireTVpre, FireTVpre$date> "2015-04-21" & FireTVpre$date < "2015-07-16") #12 weeks before PD '15
+FireTVpre2016<-subset(FireTVpre, FireTVpre$date> "2016-04-21" & FireTVpre$date < "2016-07-16") #12 weeks before PD '16
+FireTVpre2017<-subset(FireTVpre, FireTVpre$date> "2017-04-17" & FireTVpre$date < "2017-07-12") #12 weeks before PD '17
+FireTVpre<- rbind(FireTVpre2015,FireTVpre2016,FireTVpre2017)                                   #12 weeks before all PDs
+nrow(FireTVpre)
+FireTVaft<-subset(data6, data6$product == 'Fire TV')
+FireTVaft2015<-subset(FireTVaft, FireTVaft$date> "2015-07-14" & FireTVaft$date < "2015-10-07") #12 weeks after PD '15
+FireTVaft2016<-subset(FireTVaft, FireTVaft$date> "2016-07-14" & FireTVaft$date < "2016-10-07") #12 weeks after PD '16
+FireTVaft2017<-subset(FireTVaft, FireTVaft$date> "2017-07-10" & FireTVaft$date < "2017-10-03") #12 weeks after PD '17
+FireTVaft<- rbind(FireTVaft2015,FireTVaft2016,FireTVaft2017)                                   #12 weeks after all PDs
+nrow(FireTVaft)
+```
+
+```{r}  
+#Create new corpus PRE
+FireTVpredocs <- Corpus(VectorSource(FireTVpre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(FireTVpredocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+FireTVpredocs <- tm_map(FireTVpredocs, space, "/")
+FireTVpredocs <- tm_map(FireTVpredocs, space, "@")
+FireTVpredocs <- tm_map(FireTVpredocs, space, "\\|")
+# Convert text to lower case
+FireTVpredocs <- tm_map(FireTVpredocs, content_transformer(tolower))
+# Remove numbers
+FireTVpredocs <- tm_map(FireTVpredocs, removeNumbers)
+# Remove common stopwords
+FireTVpredocs <- tm_map(FireTVpredocs, removeWords, stopwords("english"))
+# Remove defined words
+FireTVpredocs <- tm_map(FireTVpredocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+FireTVpredocs <- tm_map(FireTVpredocs, removePunctuation)
+# Remove white spaces
+FireTVpredocs <- tm_map(FireTVpredocs, stripWhitespace)
+# Stem texts
+FireTVpredocs <- tm_map(FireTVpredocs, stemDocument)
+
+#Sentiment mean
+FireTVpresent <- analyzeSentiment(FireTVpredocs)
+FireTVpremeanSent <- mean(FireTVpresent$SentimentGI, na.rm = TRUE)
+FireTVpremeanSent
+#Star rating mean
+FireTVpremeanRating <- mean(FireTVpre$rating)     
+FireTVpremeanRating
+#positive reviews ratio 
+FireTVpre$direction <- convertToDirection(FireTVpresent$SentimentGI)
+posFireTVpre <- FireTVpre$direction == 'positive'  
+posFireTVpre <- posFireTVpre[!is.na(posFireTVpre)]
+neutFireTVpre <- FireTVpre$direction == 'neutral'
+neutFireTVpre <- neutFireTVpre[!is.na(neutFireTVpre)]
+negFireTVpre <- FireTVpre$direction == 'negative'
+negFireTVpre <- negFireTVpre[!is.na(negFireTVpre)]
+FireTVpreratio <- (sum(posFireTVpre)/sum(posFireTVpre+neutFireTVpre+negFireTVpre))
+FireTVpreratio
+```
+
+```{r}  
+#Create new corpus AFT
+FireTVaftdocs <- Corpus(VectorSource(FireTVaft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(FireTVaftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+FireTVaftdocs <- tm_map(FireTVaftdocs, space, "/")
+FireTVaftdocs <- tm_map(FireTVaftdocs, space, "@")
+FireTVaftdocs <- tm_map(FireTVaftdocs, space, "\\|")
+# Convert text to lower case
+FireTVaftdocs <- tm_map(FireTVaftdocs, content_transformer(tolower))
+# Remove numbers
+FireTVaftdocs <- tm_map(FireTVaftdocs, removeNumbers)
+# Remove common stopwords
+FireTVaftdocs <- tm_map(FireTVaftdocs, removeWords, stopwords("english"))
+# Remove defined words
+FireTVaftdocs <- tm_map(FireTVaftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+FireTVaftdocs <- tm_map(FireTVaftdocs, removePunctuation)
+# Remove white spaces
+FireTVaftdocs <- tm_map(FireTVaftdocs, stripWhitespace)
+# Stem texts
+FireTVaftdocs <- tm_map(FireTVaftdocs, stemDocument)
+
+#Sentiment mean
+FireTVaftsent <- analyzeSentiment(FireTVaftdocs)
+FireTVaftmeanSent <- mean(FireTVaftsent$SentimentGI, na.rm = TRUE)
+FireTVaftmeanSent
+#Star rating mean
+FireTVaftmeanRating <- mean(FireTVaft$rating)     
+FireTVaftmeanRating
+#positive reviews ratio 
+FireTVaft$direction <- convertToDirection(FireTVaftsent$SentimentGI)
+posFireTVaft <- FireTVaft$direction == 'positive'  
+posFireTVaft <- posFireTVaft[!is.na(posFireTVaft)]
+neutFireTVaft <- FireTVaft$direction == 'neutral'
+neutFireTVaft <- neutFireTVaft[!is.na(neutFireTVaft)]
+negFireTVaft <- FireTVaft$direction == 'negative'
+negFireTVaft <- negFireTVaft[!is.na(negFireTVaft)]
+FireTVaftratio <- (sum(posFireTVaft)/sum(posFireTVaft+neutFireTVaft+negFireTVaft))
+FireTVaftratio
+```
+
+
+Kindle Paperwhite
+```{r}
+#subdivide product reviews by 12 weeks before and after
+KindlePaperwhitepre<-subset(data6, data6$product == 'Kindle Paperwhite') 
+KindlePaperwhitepre2015<-subset(KindlePaperwhitepre, KindlePaperwhitepre$date> "2015-04-21" & KindlePaperwhitepre$date < "2015-07-16") #12 weeks before PD '15
+KindlePaperwhitepre2016<-subset(KindlePaperwhitepre, KindlePaperwhitepre$date> "2016-04-21" & KindlePaperwhitepre$date < "2016-07-16") #12 weeks before PD '16
+KindlePaperwhitepre2017<-subset(KindlePaperwhitepre, KindlePaperwhitepre$date> "2017-04-17" & KindlePaperwhitepre$date < "2017-07-12") #12 weeks before PD '17
+KindlePaperwhitepre<- rbind(KindlePaperwhitepre2015,KindlePaperwhitepre2016,KindlePaperwhitepre2017)                                   #12 weeks before all PDs
+nrow(KindlePaperwhitepre)
+KindlePaperwhiteaft<-subset(data6, data6$product == 'Kindle Paperwhite')
+KindlePaperwhiteaft2015<-subset(KindlePaperwhiteaft, KindlePaperwhiteaft$date> "2015-07-14" & KindlePaperwhiteaft$date < "2015-10-07") #12 weeks after PD '15
+KindlePaperwhiteaft2016<-subset(KindlePaperwhiteaft, KindlePaperwhiteaft$date> "2016-07-14" & KindlePaperwhiteaft$date < "2016-10-07") #12 weeks after PD '16
+KindlePaperwhiteaft2017<-subset(KindlePaperwhiteaft, KindlePaperwhiteaft$date> "2017-07-10" & KindlePaperwhiteaft$date < "2017-10-03") #12 weeks after PD '17
+KindlePaperwhiteaft<- rbind(KindlePaperwhiteaft2015,KindlePaperwhiteaft2016,KindlePaperwhiteaft2017)                                   #12 weeks after all PDs
+nrow(KindlePaperwhiteaft)
+```
+
+```{r}  
+#Create new corpus PRE
+KindlePaperwhitepredocs <- Corpus(VectorSource(KindlePaperwhitepre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(KindlePaperwhitepredocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, space, "/")
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, space, "@")
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, space, "\\|")
+# Convert text to lower case
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, content_transformer(tolower))
+# Remove numbers
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, removeNumbers)
+# Remove common stopwords
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, removeWords, stopwords("english"))
+# Remove defined words
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, removePunctuation)
+# Remove white spaces
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, stripWhitespace)
+# Stem texts
+KindlePaperwhitepredocs <- tm_map(KindlePaperwhitepredocs, stemDocument)
+
+#Sentiment mean
+KindlePaperwhitepresent <- analyzeSentiment(KindlePaperwhitepredocs)
+KindlePaperwhitepremeanSent <- mean(KindlePaperwhitepresent$SentimentGI, na.rm = TRUE)
+KindlePaperwhitepremeanSent
+#Star rating mean
+KindlePaperwhitepremeanRating <- mean(KindlePaperwhitepre$rating)     
+KindlePaperwhitepremeanRating
+#positive reviews ratio 
+KindlePaperwhitepre$direction <- convertToDirection(KindlePaperwhitepresent$SentimentGI)
+posKindlePaperwhitepre <- KindlePaperwhitepre$direction == 'positive'  
+posKindlePaperwhitepre <- posKindlePaperwhitepre[!is.na(posKindlePaperwhitepre)]
+neutKindlePaperwhitepre <- KindlePaperwhitepre$direction == 'neutral'
+neutKindlePaperwhitepre <- neutKindlePaperwhitepre[!is.na(neutKindlePaperwhitepre)]
+negKindlePaperwhitepre <- KindlePaperwhitepre$direction == 'negative'
+negKindlePaperwhitepre <- negKindlePaperwhitepre[!is.na(negKindlePaperwhitepre)]
+KindlePaperwhitepreratio <- (sum(posKindlePaperwhitepre)/sum(posKindlePaperwhitepre+neutKindlePaperwhitepre+negKindlePaperwhitepre))
+KindlePaperwhitepreratio
+```
+
+```{r}  
+#Create new corpus AFT
+KindlePaperwhiteaftdocs <- Corpus(VectorSource(KindlePaperwhiteaft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(KindlePaperwhiteaftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, space, "/")
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, space, "@")
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, space, "\\|")
+# Convert text to lower case
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, content_transformer(tolower))
+# Remove numbers
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, removeNumbers)
+# Remove common stopwords
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, removeWords, stopwords("english"))
+# Remove defined words
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "paperwhite", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, removePunctuation)
+# Remove white spaces
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, stripWhitespace)
+# Stem texts
+KindlePaperwhiteaftdocs <- tm_map(KindlePaperwhiteaftdocs, stemDocument)
+
+#Sentiment mean
+KindlePaperwhiteaftsent <- analyzeSentiment(KindlePaperwhiteaftdocs)
+KindlePaperwhiteaftmeanSent <- mean(KindlePaperwhiteaftsent$SentimentGI, na.rm = TRUE)
+KindlePaperwhiteaftmeanSent
+#Star rating mean
+KindlePaperwhiteaftmeanRating <- mean(KindlePaperwhiteaft$rating)     
+KindlePaperwhiteaftmeanRating
+#positive reviews ratio 
+KindlePaperwhiteaft$direction <- convertToDirection(KindlePaperwhiteaftsent$SentimentGI)
+posKindlePaperwhiteaft <- KindlePaperwhiteaft$direction == 'positive'  
+posKindlePaperwhiteaft <- posKindlePaperwhiteaft[!is.na(posKindlePaperwhiteaft)]
+neutKindlePaperwhiteaft <- KindlePaperwhiteaft$direction == 'neutral'
+neutKindlePaperwhiteaft <- neutKindlePaperwhiteaft[!is.na(neutKindlePaperwhiteaft)]
+negKindlePaperwhiteaft <- KindlePaperwhiteaft$direction == 'negative'
+negKindlePaperwhiteaft <- negKindlePaperwhiteaft[!is.na(negKindlePaperwhiteaft)]
+KindlePaperwhiteaftratio <- (sum(posKindlePaperwhiteaft)/sum(posKindlePaperwhiteaft+neutKindlePaperwhiteaft+negKindlePaperwhiteaft))
+KindlePaperwhiteaftratio
+```
+
+
+Kindle Voyage
+```{r}
+#subdivide product reviews by 12 weeks before and after
+KindleVoyagepre<-subset(data6, data6$product == 'Kindle Voyage') 
+KindleVoyagepre2015<-subset(KindleVoyagepre, KindleVoyagepre$date> "2015-04-21" & KindleVoyagepre$date < "2015-07-16") #12 weeks before PD '15
+KindleVoyagepre2016<-subset(KindleVoyagepre, KindleVoyagepre$date> "2016-04-21" & KindleVoyagepre$date < "2016-07-16") #12 weeks before PD '16
+KindleVoyagepre2017<-subset(KindleVoyagepre, KindleVoyagepre$date> "2017-04-17" & KindleVoyagepre$date < "2017-07-12") #12 weeks before PD '17
+KindleVoyagepre<- rbind(KindleVoyagepre2015,KindleVoyagepre2016,KindleVoyagepre2017)                                   #12 weeks before all PDs
+nrow(KindleVoyagepre)
+KindleVoyageaft<-subset(data6, data6$product == 'Kindle Voyage')
+KindleVoyageaft2015<-subset(KindleVoyageaft, KindleVoyageaft$date> "2015-07-14" & KindleVoyageaft$date < "2015-10-07") #12 weeks after PD '15
+KindleVoyageaft2016<-subset(KindleVoyageaft, KindleVoyageaft$date> "2016-07-14" & KindleVoyageaft$date < "2016-10-07") #12 weeks after PD '16
+KindleVoyageaft2017<-subset(KindleVoyageaft, KindleVoyageaft$date> "2017-07-10" & KindleVoyageaft$date < "2017-10-03") #12 weeks after PD '17
+KindleVoyageaft<- rbind(KindleVoyageaft2015,KindleVoyageaft2016,KindleVoyageaft2017)                                   #12 weeks after all PDs
+nrow(KindleVoyageaft)
+```
+
+```{r}  
+#Create new corpus PRE
+KindleVoyagepredocs <- Corpus(VectorSource(KindleVoyagepre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(KindleVoyagepredocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, space, "/")
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, space, "@")
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, space, "\\|")
+# Convert text to lower case
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, content_transformer(tolower))
+# Remove numbers
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, removeNumbers)
+# Remove common stopwords
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, removeWords, stopwords("english"))
+# Remove defined words
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "Voyage", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, removePunctuation)
+# Remove white spaces
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, stripWhitespace)
+# Stem texts
+KindleVoyagepredocs <- tm_map(KindleVoyagepredocs, stemDocument)
+
+#Sentiment mean
+KindleVoyagepresent <- analyzeSentiment(KindleVoyagepredocs)
+KindleVoyagepremeanSent <- mean(KindleVoyagepresent$SentimentGI, na.rm = TRUE)
+KindleVoyagepremeanSent
+#Star rating mean
+KindleVoyagepremeanRating <- mean(KindleVoyagepre$rating)     
+KindleVoyagepremeanRating
+#positive reviews ratio 
+KindleVoyagepre$direction <- convertToDirection(KindleVoyagepresent$SentimentGI)
+posKindleVoyagepre <- KindleVoyagepre$direction == 'positive'  
+posKindleVoyagepre <- posKindleVoyagepre[!is.na(posKindleVoyagepre)]
+neutKindleVoyagepre <- KindleVoyagepre$direction == 'neutral'
+neutKindleVoyagepre <- neutKindleVoyagepre[!is.na(neutKindleVoyagepre)]
+negKindleVoyagepre <- KindleVoyagepre$direction == 'negative'
+negKindleVoyagepre <- negKindleVoyagepre[!is.na(negKindleVoyagepre)]
+KindleVoyagepreratio <- (sum(posKindleVoyagepre)/sum(posKindleVoyagepre+neutKindleVoyagepre+negKindleVoyagepre))
+KindleVoyagepreratio
+```
+
+```{r}  
+#Create new corpus AFT
+KindleVoyageaftdocs <- Corpus(VectorSource(KindleVoyageaft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(KindleVoyageaftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, space, "/")
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, space, "@")
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, space, "\\|")
+# Convert text to lower case
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, content_transformer(tolower))
+# Remove numbers
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, removeNumbers)
+# Remove common stopwords
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, removeWords, stopwords("english"))
+# Remove defined words
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "Voyage", "paperback", "voyage","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, removePunctuation)
+# Remove white spaces
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, stripWhitespace)
+# Stem texts
+KindleVoyageaftdocs <- tm_map(KindleVoyageaftdocs, stemDocument)
+
+#Sentiment mean
+KindleVoyageaftsent <- analyzeSentiment(KindleVoyageaftdocs)
+KindleVoyageaftmeanSent <- mean(KindleVoyageaftsent$SentimentGI, na.rm = TRUE)
+KindleVoyageaftmeanSent
+#Star rating mean
+KindleVoyageaftmeanRating <- mean(KindleVoyageaft$rating)     
+KindleVoyageaftmeanRating
+#positive reviews ratio 
+KindleVoyageaft$direction <- convertToDirection(KindleVoyageaftsent$SentimentGI)
+posKindleVoyageaft <- KindleVoyageaft$direction == 'positive'  
+posKindleVoyageaft <- posKindleVoyageaft[!is.na(posKindleVoyageaft)]
+neutKindleVoyageaft <- KindleVoyageaft$direction == 'neutral'
+neutKindleVoyageaft <- neutKindleVoyageaft[!is.na(neutKindleVoyageaft)]
+negKindleVoyageaft <- KindleVoyageaft$direction == 'negative'
+negKindleVoyageaft <- negKindleVoyageaft[!is.na(negKindleVoyageaft)]
+KindleVoyageaftratio <- (sum(posKindleVoyageaft)/sum(posKindleVoyageaft+neutKindleVoyageaft+negKindleVoyageaft))
+KindleVoyageaftratio
+```
+
+
+Kindle Oasis
+```{r}
+#subdivide product reviews by 12 weeks before and after
+KindleOasispre<-subset(data6, data6$product == 'Kindle Oasis') 
+KindleOasispre2015<-subset(KindleOasispre, KindleOasispre$date> "2015-04-21" & KindleOasispre$date < "2015-07-16") #12 weeks before PD '15
+KindleOasispre2016<-subset(KindleOasispre, KindleOasispre$date> "2016-04-21" & KindleOasispre$date < "2016-07-16") #12 weeks before PD '16
+KindleOasispre2017<-subset(KindleOasispre, KindleOasispre$date> "2017-04-17" & KindleOasispre$date < "2017-07-12") #12 weeks before PD '17
+KindleOasispre<- rbind(KindleOasispre2015,KindleOasispre2016,KindleOasispre2017)                                   #12 weeks before all PDs
+nrow(KindleOasispre)
+KindleOasisaft<-subset(data6, data6$product == 'Kindle Oasis')
+KindleOasisaft2015<-subset(KindleOasisaft, KindleOasisaft$date> "2015-07-14" & KindleOasisaft$date < "2015-10-07") #12 weeks after PD '15
+KindleOasisaft2016<-subset(KindleOasisaft, KindleOasisaft$date> "2016-07-14" & KindleOasisaft$date < "2016-10-07") #12 weeks after PD '16
+KindleOasisaft2017<-subset(KindleOasisaft, KindleOasisaft$date> "2017-07-10" & KindleOasisaft$date < "2017-10-03") #12 weeks after PD '17
+KindleOasisaft<- rbind(KindleOasisaft2015,KindleOasisaft2016,KindleOasisaft2017)                                   #12 weeks after all PDs
+nrow(KindleOasisaft)
+```
+
+```{r}  
+#Create new corpus PRE
+KindleOasispredocs <- Corpus(VectorSource(KindleOasispre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(KindleOasispredocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+KindleOasispredocs <- tm_map(KindleOasispredocs, space, "/")
+KindleOasispredocs <- tm_map(KindleOasispredocs, space, "@")
+KindleOasispredocs <- tm_map(KindleOasispredocs, space, "\\|")
+# Convert text to lower case
+KindleOasispredocs <- tm_map(KindleOasispredocs, content_transformer(tolower))
+# Remove numbers
+KindleOasispredocs <- tm_map(KindleOasispredocs, removeNumbers)
+# Remove common stopwords
+KindleOasispredocs <- tm_map(KindleOasispredocs, removeWords, stopwords("english"))
+# Remove defined words
+KindleOasispredocs <- tm_map(KindleOasispredocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "Oasis", "paperback", "Oasis","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+KindleOasispredocs <- tm_map(KindleOasispredocs, removePunctuation)
+# Remove white spaces
+KindleOasispredocs <- tm_map(KindleOasispredocs, stripWhitespace)
+# Stem texts
+KindleOasispredocs <- tm_map(KindleOasispredocs, stemDocument)
+
+#Sentiment mean
+KindleOasispresent <- analyzeSentiment(KindleOasispredocs)
+KindleOasispremeanSent <- mean(KindleOasispresent$SentimentGI, na.rm = TRUE)
+KindleOasispremeanSent
+#Star rating mean
+KindleOasispremeanRating <- mean(KindleOasispre$rating)     
+KindleOasispremeanRating
+#positive reviews ratio 
+KindleOasispre$direction <- convertToDirection(KindleOasispresent$SentimentGI)
+posKindleOasispre <- KindleOasispre$direction == 'positive'  
+posKindleOasispre <- posKindleOasispre[!is.na(posKindleOasispre)]
+neutKindleOasispre <- KindleOasispre$direction == 'neutral'
+neutKindleOasispre <- neutKindleOasispre[!is.na(neutKindleOasispre)]
+negKindleOasispre <- KindleOasispre$direction == 'negative'
+negKindleOasispre <- negKindleOasispre[!is.na(negKindleOasispre)]
+KindleOasispreratio <- (sum(posKindleOasispre)/sum(posKindleOasispre+neutKindleOasispre+negKindleOasispre))
+KindleOasispreratio
+```
+
+```{r}  
+#Create new corpus AFT
+KindleOasisaftdocs <- Corpus(VectorSource(KindleOasisaft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(KindleOasisaftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, space, "/")
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, space, "@")
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, space, "\\|")
+# Convert text to lower case
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, content_transformer(tolower))
+# Remove numbers
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, removeNumbers)
+# Remove common stopwords
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, removeWords, stopwords("english"))
+# Remove defined words
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "Oasis", "paperback", "Oasis","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, removePunctuation)
+# Remove white spaces
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, stripWhitespace)
+# Stem texts
+KindleOasisaftdocs <- tm_map(KindleOasisaftdocs, stemDocument)
+
+#Sentiment mean
+KindleOasisaftsent <- analyzeSentiment(KindleOasisaftdocs)
+KindleOasisaftmeanSent <- mean(KindleOasisaftsent$SentimentGI, na.rm = TRUE)
+KindleOasisaftmeanSent
+#Star rating mean
+KindleOasisaftmeanRating <- mean(KindleOasisaft$rating)     
+KindleOasisaftmeanRating
+#positive reviews ratio 
+KindleOasisaft$direction <- convertToDirection(KindleOasisaftsent$SentimentGI)
+posKindleOasisaft <- KindleOasisaft$direction == 'positive'  
+posKindleOasisaft <- posKindleOasisaft[!is.na(posKindleOasisaft)]
+neutKindleOasisaft <- KindleOasisaft$direction == 'neutral'
+neutKindleOasisaft <- neutKindleOasisaft[!is.na(neutKindleOasisaft)]
+negKindleOasisaft <- KindleOasisaft$direction == 'negative'
+negKindleOasisaft <- negKindleOasisaft[!is.na(negKindleOasisaft)]
+KindleOasisaftratio <- (sum(posKindleOasisaft)/sum(posKindleOasisaft+neutKindleOasisaft+negKindleOasisaft))
+KindleOasisaftratio
+```
+
+Echo
+```{r}
+#subdivide product reviews by 12 weeks before and after
+Echopre<-subset(data6, data6$product == 'Echo') 
+Echopre2015<-subset(Echopre, Echopre$date> "2015-04-21" & Echopre$date < "2015-07-16") #12 weeks before PD '15
+Echopre2016<-subset(Echopre, Echopre$date> "2016-04-21" & Echopre$date < "2016-07-16") #12 weeks before PD '16
+Echopre2017<-subset(Echopre, Echopre$date> "2017-04-17" & Echopre$date < "2017-07-12") #12 weeks before PD '17
+Echopre<- rbind(Echopre2015,Echopre2016,Echopre2017)                                   #12 weeks before all PDs
+nrow(Echopre)
+Echoaft<-subset(data6, data6$product == 'Echo')
+Echoaft2015<-subset(Echoaft, Echoaft$date> "2015-07-14" & Echoaft$date < "2015-10-07") #12 weeks after PD '15
+Echoaft2016<-subset(Echoaft, Echoaft$date> "2016-07-14" & Echoaft$date < "2016-10-07") #12 weeks after PD '16
+Echoaft2017<-subset(Echoaft, Echoaft$date> "2017-07-10" & Echoaft$date < "2017-10-03") #12 weeks after PD '17
+Echoaft<- rbind(Echoaft2015,Echoaft2016,Echoaft2017)                                   #12 weeks after all PDs
+nrow(Echoaft)
+```
+
+```{r}  
+#Create new corpus PRE
+Echopredocs <- Corpus(VectorSource(Echopre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(Echopredocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+Echopredocs <- tm_map(Echopredocs, space, "/")
+Echopredocs <- tm_map(Echopredocs, space, "@")
+Echopredocs <- tm_map(Echopredocs, space, "\\|")
+# Convert text to lower case
+Echopredocs <- tm_map(Echopredocs, content_transformer(tolower))
+# Remove numbers
+Echopredocs <- tm_map(Echopredocs, removeNumbers)
+# Remove common stopwords
+Echopredocs <- tm_map(Echopredocs, removeWords, stopwords("english"))
+# Remove defined words
+Echopredocs <- tm_map(Echopredocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "Oasis", "paperback", "Oasis","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+Echopredocs <- tm_map(Echopredocs, removePunctuation)
+# Remove white spaces
+Echopredocs <- tm_map(Echopredocs, stripWhitespace)
+# Stem texts
+Echopredocs <- tm_map(Echopredocs, stemDocument)
+
+#Sentiment mean
+Echopresent <- analyzeSentiment(Echopredocs)
+EchopremeanSent <- mean(Echopresent$SentimentGI, na.rm = TRUE)
+EchopremeanSent
+#Star rating mean
+EchopremeanRating <- mean(Echopre$rating)     
+EchopremeanRating
+#positive reviews ratio 
+Echopre$direction <- convertToDirection(Echopresent$SentimentGI)
+posEchopre <- Echopre$direction == 'positive'  
+posEchopre <- posEchopre[!is.na(posEchopre)]
+neutEchopre <- Echopre$direction == 'neutral'
+neutEchopre <- neutEchopre[!is.na(neutEchopre)]
+negEchopre <- Echopre$direction == 'negative'
+negEchopre <- negEchopre[!is.na(negEchopre)]
+Echopreratio <- (sum(posEchopre)/sum(posEchopre+neutEchopre+negEchopre))
+Echopreratio
+```
+
+```{r}  
+#Create new corpus AFT
+Echoaftdocs <- Corpus(VectorSource(Echoaft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(Echoaftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+Echoaftdocs <- tm_map(Echoaftdocs, space, "/")
+Echoaftdocs <- tm_map(Echoaftdocs, space, "@")
+Echoaftdocs <- tm_map(Echoaftdocs, space, "\\|")
+# Convert text to lower case
+Echoaftdocs <- tm_map(Echoaftdocs, content_transformer(tolower))
+# Remove numbers
+Echoaftdocs <- tm_map(Echoaftdocs, removeNumbers)
+# Remove common stopwords
+Echoaftdocs <- tm_map(Echoaftdocs, removeWords, stopwords("english"))
+# Remove defined words
+Echoaftdocs <- tm_map(Echoaftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "Oasis", "paperback", "Oasis","oasis", "fire","tv", "hd", "echo", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+Echoaftdocs <- tm_map(Echoaftdocs, removePunctuation)
+# Remove white spaces
+Echoaftdocs <- tm_map(Echoaftdocs, stripWhitespace)
+# Stem texts
+Echoaftdocs <- tm_map(Echoaftdocs, stemDocument)
+
+#Sentiment mean
+Echoaftsent <- analyzeSentiment(Echoaftdocs)
+EchoaftmeanSent <- mean(Echoaftsent$SentimentGI, na.rm = TRUE)
+EchoaftmeanSent
+#Star rating mean
+EchoaftmeanRating <- mean(Echoaft$rating)     
+EchoaftmeanRating
+#positive reviews ratio 
+Echoaft$direction <- convertToDirection(Echoaftsent$SentimentGI)
+posEchoaft <- Echoaft$direction == 'positive'  
+posEchoaft <- posEchoaft[!is.na(posEchoaft)]
+neutEchoaft <- Echoaft$direction == 'neutral'
+neutEchoaft <- neutEchoaft[!is.na(neutEchoaft)]
+negEchoaft <- Echoaft$direction == 'negative'
+negEchoaft <- negEchoaft[!is.na(negEchoaft)]
+Echoaftratio <- (sum(posEchoaft)/sum(posEchoaft+neutEchoaft+negEchoaft))
+Echoaftratio
+```
+
+
+Tap
+```{r}
+#subdivide product reviews by 12 weeks before and after
+Tappre<-subset(data6, data6$product == 'Tap') 
+Tappre2015<-subset(Tappre, Tappre$date> "2015-04-21" & Tappre$date < "2015-07-16") #12 weeks before PD '15
+Tappre2016<-subset(Tappre, Tappre$date> "2016-04-21" & Tappre$date < "2016-07-16") #12 weeks before PD '16
+Tappre2017<-subset(Tappre, Tappre$date> "2017-04-17" & Tappre$date < "2017-07-12") #12 weeks before PD '17
+Tappre<- rbind(Tappre2015,Tappre2016,Tappre2017)                                   #12 weeks before all PDs
+nrow(Tappre)
+Tapaft<-subset(data6, data6$product == 'Tap')
+Tapaft2015<-subset(Tapaft, Tapaft$date> "2015-07-14" & Tapaft$date < "2015-10-07") #12 weeks after PD '15
+Tapaft2016<-subset(Tapaft, Tapaft$date> "2016-07-14" & Tapaft$date < "2016-10-07") #12 weeks after PD '16
+Tapaft2017<-subset(Tapaft, Tapaft$date> "2017-07-10" & Tapaft$date < "2017-10-03") #12 weeks after PD '17
+Tapaft<- rbind(Tapaft2015,Tapaft2016,Tapaft2017)                                   #12 weeks after all PDs
+nrow(Tapaft)
+```
+
+```{r}  
+#Create new corpus PRE
+Tappredocs <- Corpus(VectorSource(Tappre$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(Tappredocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+Tappredocs <- tm_map(Tappredocs, space, "/")
+Tappredocs <- tm_map(Tappredocs, space, "@")
+Tappredocs <- tm_map(Tappredocs, space, "\\|")
+# Convert text to lower case
+Tappredocs <- tm_map(Tappredocs, content_transformer(tolower))
+# Remove numbers
+Tappredocs <- tm_map(Tappredocs, removeNumbers)
+# Remove common stopwords
+Tappredocs <- tm_map(Tappredocs, removeWords, stopwords("english"))
+# Remove defined words
+Tappredocs <- tm_map(Tappredocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "Oasis", "paperback", "Oasis","oasis", "fire","tv", "hd", "Tap", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+Tappredocs <- tm_map(Tappredocs, removePunctuation)
+# Remove white spaces
+Tappredocs <- tm_map(Tappredocs, stripWhitespace)
+# Stem texts
+Tappredocs <- tm_map(Tappredocs, stemDocument)
+
+#Sentiment mean
+Tappresent <- analyzeSentiment(Tappredocs)
+TappremeanSent <- mean(Tappresent$SentimentGI, na.rm = TRUE)
+TappremeanSent
+#Star rating mean
+TappremeanRating <- mean(Tappre$rating)     
+TappremeanRating
+#positive reviews ratio 
+Tappre$direction <- convertToDirection(Tappresent$SentimentGI)
+posTappre <- Tappre$direction == 'positive'  
+posTappre <- posTappre[!is.na(posTappre)]
+neutTappre <- Tappre$direction == 'neutral'
+neutTappre <- neutTappre[!is.na(neutTappre)]
+negTappre <- Tappre$direction == 'negative'
+negTappre <- negTappre[!is.na(negTappre)]
+Tappreratio <- (sum(posTappre)/sum(posTappre+neutTappre+negTappre))
+Tappreratio
+```
+
+```{r}  
+#Create new corpus AFT
+Tapaftdocs <- Corpus(VectorSource(Tapaft$text))
+#Cleaning steps
+# Remove special characters
+preprocessCorpus(Tapaftdocs)
+space <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+Tapaftdocs <- tm_map(Tapaftdocs, space, "/")
+Tapaftdocs <- tm_map(Tapaftdocs, space, "@")
+Tapaftdocs <- tm_map(Tapaftdocs, space, "\\|")
+# Convert text to lower case
+Tapaftdocs <- tm_map(Tapaftdocs, content_transformer(tolower))
+# Remove numbers
+Tapaftdocs <- tm_map(Tapaftdocs, removeNumbers)
+# Remove common stopwords
+Tapaftdocs <- tm_map(Tapaftdocs, removeWords, stopwords("english"))
+# Remove defined words
+Tapaftdocs <- tm_map(Tapaftdocs, removeWords, c("amazon","aamazon","amazone","tap","kindle","kindl", "paperwhit", "Oasis", "paperback", "Oasis","oasis", "fire","tv", "hd", "Tap", "one", "two", "three", "first", "second", "third" )) 
+# Remove punctuations
+Tapaftdocs <- tm_map(Tapaftdocs, removePunctuation)
+# Remove white spaces
+Tapaftdocs <- tm_map(Tapaftdocs, stripWhitespace)
+# Stem texts
+Tapaftdocs <- tm_map(Tapaftdocs, stemDocument)
+
+#Sentiment mean
+Tapaftsent <- analyzeSentiment(Tapaftdocs)
+TapaftmeanSent <- mean(Tapaftsent$SentimentGI, na.rm = TRUE)
+TapaftmeanSent
+#Star rating mean
+TapaftmeanRating <- mean(Tapaft$rating)     
+TapaftmeanRating
+#positive reviews ratio 
+Tapaft$direction <- convertToDirection(Tapaftsent$SentimentGI)
+posTapaft <- Tapaft$direction == 'positive'  
+posTapaft <- posTapaft[!is.na(posTapaft)]
+neutTapaft <- Tapaft$direction == 'neutral'
+neutTapaft <- neutTapaft[!is.na(neutTapaft)]
+negTapaft <- Tapaft$direction == 'negative'
+negTapaft <- negTapaft[!is.na(negTapaft)]
+Tapaftratio <- (sum(posTapaft)/sum(posTapaft+neutTapaft+negTapaft))
+Tapaftratio
+```
+
+
+
+*6.5 Data Analysis and visualization*
+
+Distribution - variable "sentiment"
+```{r}
+#Add sentiment scores to data frame
+data6 <- cbind.data.frame(data6, TotalSentiment$SentimentGI)
+corrtest.df <- cbind.data.frame(data6$rating,data6$`TotalSentiment$SentimentGI`)
+colnames(corrtest.df)<- c("rating", "sentiment")
+CorrtestMatrix <- as.matrix(corrtest.df)
+
+#Normality plot - 'sentiment' variable
+qqnorm(corrtest.df$sentiment,main = 'Q-Q Plot for Normality - variable sentiment', xlab = 'Theoretical distance',
+       ylab = 'Sample distance', col = 'steelblue')
+qqline(corrtest.df$sentiment)
+
+ggdensity(corrtest.df$sentiment, main = "Density plot of sentiment scores",
+          xlab = "sentiment score")
+# Check for normality using the Anderson-Darling Test - 'sentiment' variable
+ad.test(rnorm(corrtest.df$sentiment))
+
+# Check for normality using the Anderson-Darling Test - 'rating' variable
+ad.test(rnorm(corrtest.df$rating))
+```
+
+Correlation
+
+1. sentiment vs rating - BEFORE PD
+```{r}
+# Scatter for all sentiment scores and all ratings  
+ggplot(pre12, aes(x = pre12$sentiment$SentimentGI, y = pre12$rating, color = pre12$rating)) + 
+    geom_point(position = position_dodge(width = 0.4))+ labs(x='sentiment', y="rating", title="Pre Prime Day", subtitle="Correlation 'sentiment' - 'star rating'") + theme(legend.position = "none")
+```
+
+```{r}
+#Correlation test on 95% confidence interval
+cor.test(pre12$sentiment$SentimentGI, pre12$rating, method = "kendall",conf.level = 0.95)
+```
+
+
+2.  sentiment vs review length  - BEFORE PD
+```{r}
+pre12$length <- nchar(pre12$text)
+# Correlation scatter plot 
+ggplot(pre12, aes(x = pre12$sentiment$SentimentGI, y = pre12$length , color = pre12$rating)) + 
+    geom_point(position = position_dodge(width = 0.4))+ ylim(0, 4000)+ xlim(-0.75, 1) + labs(x='sentiment', y="words",
+            title="Pre Prime Days", subtitle="Correlation 'sentiment' - 'review length'")+ labs(color = "Star rating")
+```
+
+
+```{r}
+#Correlation test on 95% confidence interval
+cor.test(pre12$sentiment$SentimentGI, pre12$length, method = "kendall",conf.level = 0.95)
+```
+
+
+AFTER PD
+
+Correlation
+
+1. sentiment vs rating 
+```{r}
+# Scatter for all sentiment scores and all ratings  
+ggplot(aft12, aes(x = aft12$sentiment$SentimentGI, y = aft12$rating, color = aft12$rating)) + 
+    geom_point(position = position_dodge(width = 0.4))+ labs(x='sentiment', y="rating", title="Post Prime Days", subtitle="Correlation 'sentiment' - 'star rating'") + theme(legend.position = "none")
+```
+
+
+```{r}
+#Correlation test on 95% confidence interval
+cor.test(aft12$sentiment$SentimentGI, aft12$rating, method = "kendall",conf.level = 0.95)
+```
+
+
+2.  sentiment vs review length 
+
+```{r}
+aft12$length <- nchar(aft12$text)
+# Correlation scatter plot 
+ggplot(aft12, aes(x = aft12$sentiment$SentimentGI, y = aft12$length , color = aft12$rating)) + 
+    geom_point(position = position_dodge(width = 0.4))+ ylim(0, 4000)+ xlim(-0.75, 1) + labs(x='sentiment', y="words",
+            title="Post Prime Days", subtitle="Correlation 'sentiment' - 'review length'")+ labs(color = "Star rating")
+```
+
+
+```{r}
+#Correlation test on 95% confidence interval
+cor.test(aft12$sentiment$SentimentGI, aft12$length, method = "kendall",conf.level = 0.95)
+```
+
+
+*Visualization*
+
+*****************
+Scores by periods
+*****************
+
+```{r}  
+#create review count variables
+pre8count<- nrow(pre8)
+pre10count<- nrow(pre10)
+pre12count<- nrow(pre12)
+aft8count<- nrow(aft8)
+aft10count<- nrow(aft10)
+aft12count<- nrow(aft12)
+#Create data frame from variables sentiment, rating,pos. reviews ratio and review count
+sentiment <- c(meanSApre12, meanSApre8, meanSApre10, meanSAaft8, meanSAaft10, meanSAaft12)      
+rating <- c(meanratingpre12,meanratingpre8, meanratingpre10,  meanratingaft8, meanratingaft10, meanratingaft12)
+pos.reviews <- c(pre12ReviewRatio,pre8ReviewRatio, pre10ReviewRatio,  aft8ReviewRatio, aft10ReviewRatio, aft12ReviewRatio)
+review.count <- c(pre12count, pre10count, pre8count, aft8count, aft10count, aft12count)
+name <- c('pre 12','pre 8', 'pre 10', 'aft 8', 'aft 10', 'aft 12')
+PeriodsDF <- data.frame(sentiment, rating, pos.reviews, review.count, name)
+``` 
+
+```{r}
+# Plot line chart comparing sentiment, rating, pos. reviews ratio and review count per period
+PeriodsMelt <- melt(subset(PeriodsDF, select=c(name,sentiment,rating, pos.reviews, review.count)), id.var="name")
+PeriodsMelt$name <- factor(PeriodsMelt$name,
+                   levels = c("pre 12", "pre 10", "pre 8", "aft 8", "aft 10", "aft 12"))
+ggplot(PeriodsMelt, aes(x = name, y = value, group = 1)) + geom_line(aes(color = variable)) + 
+      facet_grid(variable ~ ., scales = "free_y") + theme(legend.position = "none") + xlab('time') + ylab('score')
+```
+
+
+*****************
+Scores by product
+*****************
+*BEFORE PD*
+
+```{r}  
+#create review count variables Pre 12 weeks
+Fire7precount<- nrow(Fire7pre)
+FireHD8precount<- nrow(FireHD8pre)
+FireHD10precount<- nrow(FireHD10pre)
+FireKidsprecount<- nrow(FireKidspre)
+FireTVprecount<- nrow(FireTVpre)
+KindlePaperwhiteprecount<- nrow(KindlePaperwhitepre)
+KindleVoyageprecount<- nrow(KindleVoyagepre)
+KindleOasisprecount<- nrow(KindleOasispre)
+Echoprecount<- nrow(Echopre)
+Tapprecount <- nrow(Tappre)
+
+#Create data frame from variables sentiment, rating,pos. reviews ratio and review count
+preSentiment <-c(Fire7premeanSent,FireHD8premeanSent,FireHD10premeanSent,FireKidspremeanSent,FireTVpremeanSent,KindlePaperwhitepremeanSent,KindleVoyagepremeanSent,KindleOasispremeanSent,EchopremeanSent,TappremeanSent)
+preRating <- c(Fire7premeanRating, FireHD8premeanRating, FireHD10premeanRating, FireKidspremeanRating,FireTVpremeanRating,  KindlePaperwhitepremeanRating, KindleVoyagepremeanRating, KindleOasispremeanRating, EchopremeanRating, TappremeanRating)
+prePos.reviews <- c(Fire7preratio, FireHD8preratio, FireHD10preratio, FireKidspreratio,FireTVpreratio, KindlePaperwhitepreratio, KindleVoyagepreratio, KindleOasispreratio, Echopreratio, Tappreratio)
+preReviewcount <- c(Fire7precount, FireHD8precount, FireHD10precount,FireKidsprecount,FireTVprecount, KindlePaperwhiteprecount, KindleVoyageprecount,KindleOasisprecount,Echoprecount,Tapprecount)
+Name <- c('Fire 7', 'Fire HD 8', 'Fire HD 10', 'Fire Kids','Fire TV', 'Kindle PW', 'Kindle Voy.','Kindle Oas.', 'Echo', 'Tap')
+preProductDF <- data.frame(preSentiment, preRating, prePos.reviews, Name, preReviewcount)
+``` 
+
+```{r}
+# Plot line chart comparing sentiment, rating, pos. review ratio and review count per product
+preProductsMelt <- melt(subset(preProductDF, select=c(Name,preSentiment,preRating, prePos.reviews, preReviewcount)), id.var="Name")
+preProductsMelt$Name <- factor(preProductsMelt$Name, 
+                   levels = c('Fire 7', 'Fire HD 8', 'Fire HD 10', 'Fire Kids','Fire TV', 'Kindle PW', 'Kindle Voy.','Kindle Oas.', 'Echo', 'Tap'))
+ggplot(preProductsMelt, aes(x = Name, y = value, group = 1)) + geom_line(aes(color = variable)) + 
+      facet_grid(variable ~ ., scales = "free_y") + theme(legend.position = "none") + xlab('products') + ylab('score')
+```
+
+
+*AFTER PD*
+
+```{r}  
+#create review count variables aft 12 weeks
+Fire7aftcount<- nrow(Fire7aft)
+FireHD8aftcount<- nrow(FireHD8aft)
+FireHD10aftcount<- nrow(FireHD10aft)
+FireKidsaftcount<- nrow(FireKidsaft)
+FireTVaftcount<- nrow(FireTVaft)
+KindlePaperwhiteaftcount<- nrow(KindlePaperwhiteaft)
+KindleVoyageaftcount<- nrow(KindleVoyageaft)
+KindleOasisaftcount<- nrow(KindleOasisaft)
+Echoaftcount<- nrow(Echoaft)
+Tapaftcount <- nrow(Tapaft)
+
+#Create data frame from variables sentiment, rating,pos. reviews ratio and review count
+aftSentiment <-c(Fire7aftmeanSent,FireHD8aftmeanSent,FireHD10aftmeanSent,FireKidsaftmeanSent,FireTVaftmeanSent,KindlePaperwhiteaftmeanSent,KindleVoyageaftmeanSent,KindleOasisaftmeanSent,EchoaftmeanSent,TapaftmeanSent)
+aftRating <- c(Fire7aftmeanRating, FireHD8aftmeanRating, FireHD10aftmeanRating, FireKidsaftmeanRating,FireTVaftmeanRating,  KindlePaperwhiteaftmeanRating, KindleVoyageaftmeanRating, KindleOasisaftmeanRating, EchoaftmeanRating, TapaftmeanRating)
+aftPos.reviews <- c(Fire7aftratio, FireHD8aftratio, FireHD10aftratio, FireKidsaftratio,FireTVaftratio, KindlePaperwhiteaftratio, KindleVoyageaftratio, KindleOasisaftratio, Echoaftratio, Tapaftratio)
+aftReviewcount <- c(Fire7aftcount, FireHD8aftcount, FireHD10aftcount,FireKidsaftcount,FireTVaftcount, KindlePaperwhiteaftcount, KindleVoyageaftcount,KindleOasisaftcount,Echoaftcount,Tapaftcount)
+Name <- c('Fire 7', 'Fire HD 8', 'Fire HD 10', 'Fire Kids','Fire TV', 'Kindle PW', 'Kindle Voy.','Kindle Oas.', 'Echo', 'Tap')
+aftProductDF <- data.frame(aftSentiment, aftRating, aftPos.reviews, Name, aftReviewcount)
+``` 
+
+```{r}
+# Plot line chart comparing sentiment, rating, pos. review ratio and review count per product
+aftProductsMelt <- melt(subset(aftProductDF, select=c(Name,aftSentiment,aftRating, aftPos.reviews, aftReviewcount)), id.var="Name")
+aftProductsMelt$Name <- factor(aftProductsMelt$Name, 
+                   levels = c('Fire 7', 'Fire HD 8', 'Fire HD 10', 'Fire Kids','Fire TV', 'Kindle PW', 'Kindle Voy.','Kindle Oas.', 'Echo', 'Tap'))
+ggplot(aftProductsMelt, aes(x = Name, y = value, group = 1)) + geom_line(aes(color = variable)) + 
+      facet_grid(variable ~ ., scales = "free_y") + theme(legend.position = "none") + xlab('products') + ylab('score')
+```
+
+
+*Word usage by different periods*
+
+Word occurences
+```{r} 
+# Bar plot for 15 most used words in 12 weeks before Prime Day's 2015-2017
+barplot(pre12df[1:15,]$freq, las = 2, names.arg = pre12df[1:15,]$word,
+        col ="royalblue", main ="Most frequent words before Prime Days",
+        ylab = "Word frequencies")
+```
+
+```{r} 
+# Bar plot for 15 most used words in 12 weeks before Prime Day's 2015-2017
+barplot(aft12df[1:15,]$freq, las = 2, names.arg = aft12df[1:15,]$word,
+        col ="darkblue", main ="Most frequent words after Prime Days",
+        ylab = "Word frequencies")
+```
+
+
+
+Word clouds
+```{r} 
+# 100 most used words in 12 weeks before Prime Day's 2015-2017
+set.seed(1234)
+wordcloud(words = pre12df$word, freq = pre12df$freq, min.freq = 1,
+          max.words=100, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(10, "Reds"))
+``` 
+
+```{r} 
+# 100 most used words in 12 weeks after Prime Day's 2015-2017
+set.seed(1234)
+wordcloud(words = aft12df$word, freq = aft12df$freq, min.freq = 1,
+          max.words=100, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(4, "Paired"))
+``` 
+
+```{r} 
+# 100 most used words in 12 weeks before Prime Day's 2015-2017
+head(pre12df, 100)
+``` 
+```{r} 
+# 100 most used words in 12 weeks after Prime Day's 2015-2017
+head(aft12df, 100)
+``` 
+
+
+Word associations: 
+
+All 12 weeks prior to PD
+```{r} 
+# Find words that mostly correlate with popular and particular terms associated with PrimeDay
+findAssocs(pre12dtm, c("prime", "alexa", "price", "offer", "cheap", "sale", "purchas", "bought", "app", "great", "use", "love", "like", "well","easi", "need", "want", "dislike", "hate" ), c(0.2, 0.15, 0.1, 0.15, 0.15, 0.15, 0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.15, 0.1, 0.15, 0.1, 0.1, 0.2))
+``` 
+
+All 12 weeks after PD
+```{r} 
+# Find words that mostly correlate with popular and particular terms associated with PrimeDay
+findAssocs(aft12dtm, c("prime", "alexa", "price", "offer", "cheap", "sale", "purchas", "bought", "app", "great", "use", "love", "like", "well", "easi", "need", "want", "dislike", "hate"), c(0.2, 0.15, 0.1, 0.15, 0.15, 0.15, 0.1, 0.1, 0.3, 0.1, 0.2, 0.1, 0.15, 0.15, 0.1, 0.15, 0.2, 0.1, 0.1))
+```  
+
+
+Review lengths before and after PDs
+```{r}  
+PreLength<-nchar(pre12$text)
+describe(PreLength)
+AftLength<-nchar(aft12$text)
+describe(AftLength)
+```  
+  
+  
+  
+  
+  
+
+  
+  
