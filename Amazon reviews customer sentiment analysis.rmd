@@ -1,12 +1,8 @@
 
-Jan Roller, Student-ID: 21820925
-Master Thesis at Zhejiang University, School of Management
-"HOW GLOBAL SHOPPING EVENTS INFLUENCE CUSTOMERS’ EMOTIONS"
-01.July.2019
 
+This project deals with the data analysis that I have done as part of my final master's thesis at Zhejiang University in Summer 2020. It includes data cleaning, restructuring, and Natural Language Processing (NLP) by building text corpora and performing sentiment analyses. All this work was aimed to tackle my thesis' research question of 'How customer emotions are influenced by global e-Commerce events', such as the Amazon Prime Day, which is the subject of this study.
 
-
-*Loading libraries and dependancies*
+*Loading libraries and dependencies*
   
 ```{r message=FALSE, warning=FALSE}
 library(Hmisc)
@@ -20,7 +16,7 @@ library(scales)
 library(corrplot)
 library(rgdal)
 library(caret)
-library(psych)
+#library(psych)
 library(nortest)
 library(reshape2)
 library(lubridate)
@@ -40,7 +36,7 @@ library(RColorBrewer)
 Loading data set
 ```{r}
 rm(list=ls())
-dataset <-read.csv("C:/Users/Jan/Desktop/Master Thesis/Data Set.csv", stringsAsFactors = FALSE)
+dataset <-read.csv("C:/Users/HP/Documents/Uni/Zhejiang Uni/Master Thesis/JanRoller_Master_thesis_15.06.2020_Data Set.csv", stringsAsFactors = FALSE)
 ```
 
 
@@ -117,7 +113,7 @@ sum(is.na(data3$Product))
 
 Histogram representing count of each product in the new data frame   
 ```{r}
-ggplot(data3, aes(reorder(data3$Product,data3$Product,length), fill=data3$Product))+
+ggplot(data3, aes(reorder(Product,Product,length), fill=Product))+
 geom_bar(width=1, colour="gray")+ geom_text(aes(y=..count.., label=..count..),
                    stat="count", color="black", 
                    hjust=0.5, size=3)+ labs(title="Reviews per product", y="# Reviews", x = "Products")+  
@@ -162,9 +158,9 @@ max(data4$month)
 
 Histogram for review date distribution per month  
 ```{r}
-ggplot(data4, aes(x=data4$month, stat(count))) + 
+ggplot(data4, aes(x=month, stat(count))) + 
  geom_histogram(bins=30, colour="black", fill="lightblue")+
-  geom_vline(aes(xintercept=mean(data4$day)),
+  geom_vline(aes(xintercept=mean(day)),
             color="black", linetype="dashed", size=1)+
   labs(title="Reviews per month", y="# Reviews", x = "Time")+
   theme_update(plot.title = element_text(hjust = 0.5))
@@ -174,7 +170,7 @@ ggplot(data4, aes(x=data4$month, stat(count))) +
 *Products vs reviews.date*
 Line chart to plot Products over reviews.date to see which products were reviewed in which time span
 ```{r}
-ggplot(data4, aes(x = data4$day, y = data4$Product)) + geom_point(colour="blue") + geom_smooth(method='lm', formula=y~x, colour="lightblue") + labs(title="Reviews per product over time", y="Products", x = "Time")+
+ggplot(data4, aes(x = day, y = Product)) + geom_point(colour="blue") + geom_smooth(method='lm', formula=y~x, colour="lightblue") + labs(title="Reviews per product over time", y="Products", x = "Time")+
   theme_update(plot.title = element_text(hjust = 0.5))
 ```
 
@@ -271,7 +267,7 @@ Review length over time
 
     Variable 'asins' (Product)
 ```{r}
- ggplot(data5, aes(day,data5$Product, group = 1)) +
+ ggplot(data5, aes(data5$day,data5$Product, group = 1)) +
   geom_point(colour= "dark green") +
           labs(title = "Outliers - Reviews per product over time", x = "Time", y = "Products")+
   theme(legend.position="none")
@@ -294,7 +290,7 @@ ggplot(data5, aes(x=data5$month, stat(count))) +
     
     Variable 'reviews.text' 
 ```{r}
- ggplot(data5, aes(data5$day, data5$textlength, group = 1, colour= "green")) +
+ ggplot(data5, aes(day, textlength, group = 1, colour= "green")) +
   geom_point() +
           geom_smooth(method='lm',formula=y~x,col="dodgerblue") +
          labs(title = "Outliers - Review length over time", x = "Time", y = "Words")+
