@@ -1,3 +1,6 @@
+Output at: https://janro27.github.io/Data-Analysis-Projects/Amazon%20customer%20reviews%20Sentiment%20Analysis/docs/Amazon-reviews-customer-sentiment-analysis.html
+
+
 This project deals with the data analysis that I have done as part of my final master's thesis at Zhejiang University in Summer 2020.
 It includes data cleaning, restructuring, and Natural Language Processing (NLP) by building text corpora and performing sentiment analyses. 
 All this work was aimed to tackle my thesis' research question of 'How customer emotions are influenced by global e-Commerce events', 
