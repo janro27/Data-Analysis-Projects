@@ -1,4 +1,4 @@
-Output at: https://janro27.github.io/Data-Analysis-Projects/Amazon%20customer%20reviews%20Sentiment%20Analysis/docs/Amazon-reviews-customer-sentiment-analysis.html
+View my work's output at: https://janro27.github.io/Data-Analysis-Projects/Amazon%20customer%20reviews%20Sentiment%20Analysis/docs/Amazon-reviews-customer-sentiment-analysis.html
 
 
 This project deals with the data analysis that I have done as part of my final master's thesis at Zhejiang University in Summer 2020.
