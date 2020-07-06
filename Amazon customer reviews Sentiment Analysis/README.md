@@ -8,3 +8,5 @@ Main content:
 - Data restructuring
 - Data visualization
 - NLP / Sentiment Analysis + word associations and word clouds
+
+Language: R
