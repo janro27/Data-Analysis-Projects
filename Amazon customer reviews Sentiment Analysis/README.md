@@ -10,3 +10,5 @@ Main content:
 - NLP / Sentiment Analysis + word associations and word clouds
 
 Language: R
+
+NOTE:  The code can be seen in the .rmd file and the code output in the .html file in this folder.
