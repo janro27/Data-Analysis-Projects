@@ -1,7 +1,13 @@
-This project deals with the data analysis that I have done as part of my final master's thesis at Zhejiang University in Summer 2020. It includes data cleaning, restructuring, and Natural Language Processing (NLP) by building text corpora and performing sentiment analyses. All this work was aimed to tackle my thesis' research question of 'How customer emotions are influenced by global e-Commerce events', such as the Amazon Prime Day, which is the subject of this study.
+  
+Data cleaning, visualization and analysis of different air pollution indexes (NO2, O3, SO2, and CO) recorded in the USA between 2000 and 2016.
+The data set comes from a Kaggle.com repository, where I also shared my work on this data set.
 
 Main content:
 
 - Data exploration and cleaning
 - Data visualization (matplotlib, plotly)
 - Output analysis
+
+Language:  Python
+
+See my work at https://www.kaggle.com/janroller/data-analysis-interactive-visualizations-plotly
