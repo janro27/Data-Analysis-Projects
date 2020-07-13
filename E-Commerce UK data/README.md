@@ -6,11 +6,11 @@
 - around 540,000 data points, most of them relate to UK customers
 - retail shop mainly sells all-occasion presents
 
-The data set originally comes from the UCI Machine Learning Repository, where is is maintained and accessible by the "Online Retail". I accessed the data set in July 2020 from the following repository on kaggle.com: https://www.kaggle.com/carrie1/ecommerce-data
+The data set originally comes from the UCI Machine Learning Repository, where it is maintained and accessible by the "Online Retail". I accessed the data set in July 2020 from the following repository on kaggle.com: https://www.kaggle.com/carrie1/ecommerce-data
 
 
 ## Objectives
 
-The aim of this notebook is to investigate on the purchasing habits that customers from different countries followed when they did the purchased contained in this data set.
-To do so, the purchases are grouped in seasonal sections and analyzed per country. Based on the product bought, its price, and its quantity findings can be obtained and analyzed. A further variable 'Price_total', which I created myself, is taken into consideration here.
-For the analysis I mainly focus on comparative visualizations. 
+This project I mainly undertook for applying data cleaning and visualization techniques in the e-Commerce sector (an area of personal interest to me). In particular, my aim of this notebook was to investigate on the purchasing habits that customers from different countries followed when they did the purchased contained in this data set.
+To do so, the purchases were grouped in seasonal sections and analyzed per country. Based on the product bought, its price, and its quantity findings could be obtained and analyzed. A further variable 'Price_total', which I created myself, was taken into consideration here.
+For the analysis, I mainly focussed on comparative visualizations. 
