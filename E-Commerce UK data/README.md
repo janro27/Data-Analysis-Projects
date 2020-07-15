@@ -1,3 +1,6 @@
+View code and output (including plotly graphs) here: https://nbviewer.jupyter.org/github/janro27/Data-Analysis-Projects/blob/master/E-Commerce%20UK%20data/E-Commerce%20UK%20analysis.ipynb
+
+
 ### Background of the data
 
 - transactions (orders and cancelations) from mostly wholesalers on a UK online retail store
