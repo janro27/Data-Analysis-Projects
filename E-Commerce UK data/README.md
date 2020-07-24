@@ -15,4 +15,4 @@ The data set originally comes from the UCI Machine Learning Repository, where it
 ## Objectives
 
 This project I mainly undertook to apply data cleaning and visualization techniques in the e-Commerce sector (an area of main personal interest to me). In particular, my aim of this notebook was to obtain insights on who the customers of the seller were, where they come from, and what products were popular at what period of the year.
-Based on the product bought, its price, and its quantity findings could be obtained and analyzed. A further variable 'Price_total', which I created myself, was taken into consideration here. For the analysis, I mainly focussed on comparative visualizations. 
+Based on the product bought, its price, and its quantity findings could be obtained and analyzed. A further variable 'Price_total', added by me, was taken into consideration here. For the analysis, I mainly focussed on comparative visualizations. 
